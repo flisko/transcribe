@@ -1,0 +1,4 @@
+models/*.bin
+Transcribe.app/
+*.txt
+!docs/**/*.md
