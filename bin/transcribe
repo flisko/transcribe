@@ -1,0 +1,66 @@
+#!/bin/bash
+# Core transcriber: bin/transcribe LANG file1 [file2 ...]
+# For each video: extract audio (ffmpeg) -> transcribe (whisper) -> <video>.txt
+set -uo pipefail
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# Resolve project root (this script lives in <root>/bin)
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MODEL_NAME="ggml-large-v3-turbo.bin"   # keep in sync with setup.command
+MODEL="$ROOT/models/$MODEL_NAME"
+
+# Locate whisper binary
+if command -v whisper-cli >/dev/null 2>&1; then WHISPER=whisper-cli
+elif command -v whisper-cpp >/dev/null 2>&1; then WHISPER=whisper-cpp
+elif command -v main >/dev/null 2>&1; then WHISPER=main
+else
+  echo "whisper.cpp not found. Please run setup.command first." >&2
+  exit 1
+fi
+
+if [ ! -f "$MODEL" ]; then
+  echo "Model not found at $MODEL. Please run setup.command first." >&2
+  exit 1
+fi
+
+if [ "$#" -lt 2 ]; then
+  echo "Usage: transcribe LANG file1 [file2 ...]" >&2
+  exit 2
+fi
+
+# Normalize language (hr/sl or common full names)
+raw_lang="$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"; shift
+case "$raw_lang" in
+  hr|croatian|hrvatski) LANG_CODE=hr ;;
+  sl|slovenian|slovene|slovenscina|slovenščina) LANG_CODE=sl ;;
+  "" ) LANG_CODE=hr ;;
+  * ) LANG_CODE="$raw_lang" ;;   # pass through any other whisper code
+esac
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+ok=0; fail=0
+for f in "$@"; do
+  if [ ! -f "$f" ]; then
+    echo "SKIP (not a file): $f" >&2; fail=$((fail+1)); continue
+  fi
+  base="${f%.*}"                     # strip extension -> output prefix
+  name="$(basename "$f")"
+  wav="$tmpdir/audio.wav"
+
+  echo "Transcribing: $name (language=$LANG_CODE)"
+  if ! ffmpeg -y -loglevel error -i "$f" -vn -ar 16000 -ac 1 -c:a pcm_s16le "$wav"; then
+    echo "SKIP (could not read audio): $name" >&2; fail=$((fail+1)); continue
+  fi
+
+  if "$WHISPER" -m "$MODEL" -f "$wav" -l "$LANG_CODE" -otxt -of "$base" >/dev/null 2>&1; then
+    echo "  -> ${base}.txt"; ok=$((ok+1))
+  else
+    echo "SKIP (transcription failed): $name" >&2; fail=$((fail+1))
+  fi
+  rm -f "$wav"
+done
+
+echo "Done. $ok succeeded, $fail failed."
+[ "$fail" -eq 0 ]
