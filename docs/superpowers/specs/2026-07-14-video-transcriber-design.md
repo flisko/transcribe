@@ -89,9 +89,19 @@ responsibilities:
 - Cancel (error −128) at any dialog exits quietly.
 
 No transcription logic lives in the app — it delegates everything to
-`bin/transcribe`. `build_app.sh` bakes the absolute path to the project's
-`bin/transcribe` into the app at build time, so the core script stays editable
-and testable without rebuilding the app.
+`bin/transcribe`. The app resolves `bin/transcribe` **relative to its own
+location at run time** (`POSIX path of (path to me)` → parent folder →
+`bin/transcribe`), so the core script stays editable without rebuilding, and the
+built app is **portable**: move/rename the folder or copy it to another Mac and
+it still works, as long as `Transcribe.app`, `bin/`, and `models/` stay together.
+If the engine isn't found (e.g. only the app was copied, or setup hasn't run on
+this Mac), the app shows a clear "copy the whole folder and run setup.command"
+message instead of a raw shell error.
+
+   > **Revision 3 (2026-07-14):** originally the absolute path to `bin/transcribe`
+   > was baked into the app at build time. This broke when the folder was copied
+   > to another Mac (different username → `/Users/<name>` path didn't exist,
+   > yielding `sh: … No such file`). Changed to runtime relative resolution.
 
 ### `setup.command`
 

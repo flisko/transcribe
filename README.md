@@ -45,9 +45,30 @@ For Croatian & Slovenian, **Best quality** is the recommended default — the
 speed-optimized `turbo` model loses the most accuracy exactly on these kinds of
 lower-resource languages.
 
+## Moving the folder / using it on another Mac
+
+The app finds its engine **relative to itself**, so you can move or rename the
+whole `transcribe` folder freely — no rebuild needed. Just keep the folder
+together: `Transcribe.app`, `bin/`, and `models/` must stay side by side.
+
+To set it up on **another Mac**:
+
+1. Copy the **whole `transcribe` folder** (not just the app). If you copy the
+   `models/` folder too, you skip the ~4.6GB re-download.
+2. On that Mac, macOS may block the copied app the first time ("unidentified
+   developer"). Either **right-click the app → Open → Open**, or run this once in
+   Terminal to clear the flag for the whole folder:
+   ```bash
+   xattr -dr com.apple.quarantine /path/to/transcribe
+   ```
+3. Double-click **`setup.command`** on that Mac once. It installs whisper.cpp +
+   ffmpeg via Homebrew (and downloads the models if you didn't copy them).
+   > Requires [Homebrew](https://brew.sh); `setup.command` tells you if it's missing.
+4. Use `Transcribe.app` as normal.
+
 ## Rebuilding the app
 
-If you move the project folder, rebuild the app so it points at the new path:
+Only needed if you change `build_app.sh`:
 
 ```bash
 ./build_app.sh
