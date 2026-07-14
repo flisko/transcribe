@@ -10,10 +10,13 @@ speech model (~1.6GB). Takes a few minutes. Re-running it is safe.
 
 ## Everyday use
 
-1. Drag one or more video files onto **`Transcribe.app`**.
-2. Type the language when asked: `hr` (Croatian) or `sl` (Slovenian).
-3. Wait for the "Done" notification. Each `Video.mov` gets a `Video.txt`
-   transcript saved right next to it.
+1. **Double-click `Transcribe.app`.** A file picker opens.
+2. Choose one or more videos (Cmd-click to select several), click **Open**.
+3. Type the language when asked: `hr` (Croatian) or `sl` (Slovenian).
+4. Wait — a dialog reports when it's finished. Each `Video.mov` gets a
+   `Video.txt` transcript saved right next to it.
+
+(You can also drag videos straight onto the app icon if you prefer — same result.)
 
 ## From the Terminal (optional)
 
