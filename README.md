@@ -20,7 +20,14 @@ speech model (~1.6GB). Takes a few minutes. Re-running it is safe.
    `Video.txt` transcript **and** a `Video.srt` subtitle file saved right next
    to it.
 
-(You can also drag videos straight onto the app icon if you prefer — same result.)
+(You can also drag files straight onto the app icon if you prefer — same result.)
+
+### Supported formats
+
+Any audio or video file with an audio track works — it's decoded with `ffmpeg`.
+That includes audio (`.mp3`, `.m4a`, `.aac`, `.wav`, `.flac`, `.ogg`, `.opus`,
+`.wma`, `.aiff`) and video (`.mov`, `.mp4`, `.m4v`, `.mkv`, `.avi`, `.webm`,
+`.wmv`, `.flv`, `.mpg`, `.3gp`). A file with no audio track is skipped with a note.
 
 ## From the Terminal (optional)
 
