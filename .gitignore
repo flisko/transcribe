@@ -2,3 +2,4 @@ models/*.bin
 Transcribe.app/
 *.txt
 !docs/**/*.md
+.DS_Store
