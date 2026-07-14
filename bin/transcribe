@@ -2,7 +2,7 @@
 # Core transcriber: bin/transcribe MODEL LANG file1 [file2 ...]
 #   MODEL: best (large-v3, most accurate) | fast (large-v3-turbo, ~4x faster)
 #   LANG:  hr | sl | any Whisper language code
-# For each video: extract audio (ffmpeg) -> transcribe (whisper) -> <video>.txt
+# For each video: extract audio (ffmpeg) -> transcribe (whisper) -> <video>.txt + <video>.srt
 set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
@@ -65,8 +65,8 @@ for f in "$@"; do
     echo "SKIP (could not read audio): $name" >&2; fail=$((fail+1)); continue
   fi
 
-  if "$WHISPER" -m "$MODEL" -f "$wav" -l "$LANG_CODE" -otxt -of "$base" >/dev/null 2>&1; then
-    echo "  -> ${base}.txt"; ok=$((ok+1))
+  if "$WHISPER" -m "$MODEL" -f "$wav" -l "$LANG_CODE" -otxt -osrt -of "$base" >/dev/null 2>&1; then
+    echo "  -> ${base}.txt + ${base}.srt"; ok=$((ok+1))
   else
     echo "SKIP (transcription failed): $name" >&2; fail=$((fail+1))
   fi

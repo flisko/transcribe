@@ -6,9 +6,9 @@
 ## Purpose
 
 A dead-simple Mac tool to transcribe personal videos (mostly Croatian and
-Slovenian) to text. The user drags video files onto an app icon and gets a
-plain-text transcript next to each video. No terminal knowledge required for
-day-to-day use.
+Slovenian) to text. The user picks video files (via the app) and gets a
+plain-text transcript (`.txt`) and a timestamped subtitle file (`.srt`) next to
+each video. No terminal knowledge required for day-to-day use.
 
 ## User experience
 
@@ -65,8 +65,10 @@ The core. Pure `bash`, no Python dependency.
   clear "run setup.command first" message and exits non-zero.
 - For each input file:
   1. Extract audio with `ffmpeg` to a temp 16kHz mono 16-bit WAV.
-  2. Run `whisper-cli` with `--language LANG`, the selected model, and `-otxt`.
-  3. whisper writes `<video_basename>.txt` next to the video (via `-of`).
+  2. Run `whisper-cli` with `--language LANG`, the selected model, `-otxt`, and
+     `-osrt`.
+  3. whisper writes `<video_basename>.txt` and `<video_basename>.srt` next to the
+     video (via `-of`).
   4. Delete the temp WAV.
 - Each file is handled independently: a failure on one file is recorded and the
   script continues to the next. Prints a summary (succeeded / failed) at the end.
@@ -122,9 +124,9 @@ The model→filename mapping lives in `bin/transcribe`; the download list lives 
 
 ## Testing
 
-- **Core script:** `bin/transcribe hr IMG_2827.mov` from the Terminal produces
-  `IMG_2827.txt`. This is the main end-to-end test, using the existing sample
-  video in the project folder.
+- **Core script:** `bin/transcribe best hr IMG_2827.mov` from the Terminal
+  produces `IMG_2827.txt` and `IMG_2827.srt`. This is the main end-to-end test,
+  using the existing sample video in the project folder.
 - **Setup idempotency:** running `setup.command` twice does no harm and skips
   completed steps.
 - **App build:** `build_app.sh` produces a `Transcribe.app` that opens and shows
@@ -132,7 +134,6 @@ The model→filename mapping lives in `bin/transcribe`; the download list lives 
 
 ## Out of scope (YAGNI)
 
-- SRT/subtitle output (text only, per decision).
 - Automatic language detection (user types the language).
 - Cloud/API engines (local only).
 - Windows/Linux support (macOS only).

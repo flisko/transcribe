@@ -1,5 +1,6 @@
 models/*.bin
 Transcribe.app/
 *.txt
+*.srt
 !docs/**/*.md
 .DS_Store

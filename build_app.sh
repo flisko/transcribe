@@ -63,7 +63,7 @@ Not sure? Choose Best quality." buttons {"Cancel", "Fast", "Best quality"} defau
     display notification "Transcribing with the " & modelSel & " model… this can take a few minutes." with title "Transcribe"
     -- 2>&1 + true: capture all output and never throw, so we can always show a clear summary.
     set theResult to do shell script quoted form of coreScript & " " & quoted form of modelSel & " " & quoted form of langAnswer & filesArg & " 2>&1; true"
-    display dialog "Transcription finished." & return & return & theResult & return & return & "Transcripts (.txt) are saved next to each video." buttons {"OK"} default button "OK" with title "Transcribe"
+    display dialog "Transcription finished." & return & return & theResult & return & return & "Transcript (.txt) and subtitles (.srt) are saved next to each video." buttons {"OK"} default button "OK" with title "Transcribe"
 end processFiles
 APPLESCRIPT
 

@@ -17,7 +17,8 @@ speech model (~1.6GB). Takes a few minutes. Re-running it is safe.
    - **Fast** — ~4× faster, slightly less accurate.
 4. Type the language when asked: `hr` (Croatian) or `sl` (Slovenian).
 5. Wait — a dialog reports when it's finished. Each `Video.mov` gets a
-   `Video.txt` transcript saved right next to it.
+   `Video.txt` transcript **and** a `Video.srt` subtitle file saved right next
+   to it.
 
 (You can also drag videos straight onto the app icon if you prefer — same result.)
 
