@@ -1,13 +1,13 @@
 #!/bin/bash
-# Core transcriber: bin/transcribe LANG file1 [file2 ...]
+# Core transcriber: bin/transcribe MODEL LANG file1 [file2 ...]
+#   MODEL: best (large-v3, most accurate) | fast (large-v3-turbo, ~4x faster)
+#   LANG:  hr | sl | any Whisper language code
 # For each video: extract audio (ffmpeg) -> transcribe (whisper) -> <video>.txt
 set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 # Resolve project root (this script lives in <root>/bin)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-MODEL_NAME="ggml-large-v3-turbo.bin"   # keep in sync with setup.command
-MODEL="$ROOT/models/$MODEL_NAME"
 
 # Locate whisper binary
 if command -v whisper-cli >/dev/null 2>&1; then WHISPER=whisper-cli
@@ -18,14 +18,24 @@ else
   exit 1
 fi
 
+if [ "$#" -lt 3 ]; then
+  echo "Usage: transcribe MODEL LANG file1 [file2 ...]" >&2
+  echo "  MODEL: best | fast" >&2
+  exit 2
+fi
+
+# Map model selector -> GGML file (keep filenames in sync with setup.command)
+model_sel="$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"; shift
+case "$model_sel" in
+  fast|turbo|large-v3-turbo) MODEL_NAME="ggml-large-v3-turbo.bin" ;;
+  best|large-v3|"")          MODEL_NAME="ggml-large-v3.bin" ;;
+  *)                         MODEL_NAME="ggml-large-v3.bin" ;;   # unknown -> best
+esac
+MODEL="$ROOT/models/$MODEL_NAME"
+
 if [ ! -f "$MODEL" ]; then
   echo "Model not found at $MODEL. Please run setup.command first." >&2
   exit 1
-fi
-
-if [ "$#" -lt 2 ]; then
-  echo "Usage: transcribe LANG file1 [file2 ...]" >&2
-  exit 2
 fi
 
 # Normalize language (hr/sl or common full names)
@@ -40,6 +50,7 @@ esac
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
+echo "Model: $MODEL_NAME"
 ok=0; fail=0
 for f in "$@"; do
   if [ ! -f "$f" ]; then

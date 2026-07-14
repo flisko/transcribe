@@ -17,19 +17,29 @@ day-to-day use.
    safe to re-run; skips work already done.
 2. **Every use:** double-click the **Transcribe** app — a file picker opens;
    choose one or more videos (or, alternatively, drag videos onto the app icon).
-   - A small popup asks the language: type `hr` (Croatian) or `sl` (Slovenian).
+   - A popup asks the **model**: **Best quality** (`large-v3`, most accurate for
+     Croatian/Slovenian) or **Fast** (`large-v3-turbo`, ~4× faster). Pros/cons are
+     shown in the dialog; defaults to Best quality.
+   - A popup asks the **language**: type `hr` (Croatian) or `sl` (Slovenian).
      Defaults to `hr`.
    - Each video is transcribed in turn.
    - A completion dialog reports the result (N succeeded / M failed).
    - For each `VideoName.mov`, a `VideoName.txt` transcript is written in the
      same folder as the video.
 
-   > **Revision (2026-07-14, post-build):** the original design triggered
+   > **Revision 1 (2026-07-14, post-build):** the original design triggered
    > transcription only by dragging files onto the icon. In practice
    > double-clicking the app just showed an instruction with nowhere obvious to
    > drop. Changed so double-click opens a file picker (`choose file`), which is
    > the primary "click to run" path; drag-and-drop still works as a secondary
    > path.
+   >
+   > **Revision 2 (2026-07-14):** model is now chosen at transcribe time (Best
+   > quality vs Fast) instead of being a fixed default, with pros/cons shown in
+   > the dialog. `setup.command` downloads both models (~4.6GB) so the choice is
+   > instant. Benchmarks and a side-by-side on the sample clip confirmed
+   > `large-v3` is meaningfully more accurate than `turbo` for Croatian, so Best
+   > quality is the recommended default.
 
 ## Architecture
 
@@ -45,16 +55,18 @@ transcribe/
 └── README.md
 ```
 
-### `bin/transcribe LANG file1 [file2 …]`
+### `bin/transcribe MODEL LANG file1 [file2 …]`
 
 The core. Pure `bash`, no Python dependency.
 
-- Validates that `whisper-cli` and the model exist; if not, prints a clear
-  "run setup.command first" message and exits non-zero.
+- `MODEL` is `best` (→ `ggml-large-v3.bin`) or `fast` (→ `ggml-large-v3-turbo.bin`);
+  an unknown value falls back to `best`.
+- Validates that `whisper-cli` and the selected model file exist; if not, prints a
+  clear "run setup.command first" message and exits non-zero.
 - For each input file:
   1. Extract audio with `ffmpeg` to a temp 16kHz mono 16-bit WAV.
-  2. Run `whisper-cli` with `--language LANG`, the model, and `-otxt`.
-  3. Move/rename whisper's output to `<video_basename>.txt` next to the video.
+  2. Run `whisper-cli` with `--language LANG`, the selected model, and `-otxt`.
+  3. whisper writes `<video_basename>.txt` next to the video (via `-of`).
   4. Delete the temp WAV.
 - Each file is handled independently: a failure on one file is recorded and the
   script continues to the next. Prints a summary (succeeded / failed) at the end.
@@ -68,10 +80,11 @@ responsibilities:
 - `on run` (double-click): open a file picker
   (`choose file … with multiple selections allowed`) to select videos.
 - `on open theFiles` (drag-drop): catch dropped files.
-- Both paths call a shared `processFiles` handler: show the language popup
+- Both paths call a shared `processFiles` handler: show the model popup
+  (Best quality / Fast, with pros/cons), then the language popup
   (`display dialog … default answer "hr"`), invoke `bin/transcribe` with the
-  language and file paths, then show a completion dialog with the result summary.
-- Cancel (error −128) at either dialog exits quietly.
+  model, language, and file paths, then show a completion dialog with the summary.
+- Cancel (error −128) at any dialog exits quietly.
 
 No transcription logic lives in the app — it delegates everything to
 `bin/transcribe`. `build_app.sh` bakes the absolute path to the project's
@@ -84,15 +97,21 @@ Double-clickable one-time installer:
 
 - Ensures Homebrew is present (clear message if not).
 - `brew install whisper-cpp` if `whisper-cli` is missing.
-- Downloads the model into `models/` if absent.
+- Downloads both models into `models/` if absent (iterates a `MODELS` list).
 - Idempotent; prints what it did / skipped.
 
-## Model
+## Models
 
-Default: `large-v3-turbo` GGML (~1.6GB) — fast on Apple Silicon with good
-Croatian/Slovenian quality. The model name is a single editable variable near the
-top of `setup.command` and `bin/transcribe`; switching to full `large-v3`
-(max accuracy, slower) is a one-line change.
+Two GGML models, both downloaded once (~4.6GB total) so the user can pick per
+transcription with no extra wait:
+
+- **Best quality** — `ggml-large-v3.bin` (~3GB). Most accurate for Croatian,
+  Slovenian, and other lower-resource Balkan languages. Recommended default.
+- **Fast** — `ggml-large-v3-turbo.bin` (~1.6GB). ~4× faster; a distilled model
+  whose accuracy loss is largest exactly on lower-resource languages.
+
+The model→filename mapping lives in `bin/transcribe`; the download list lives in
+`setup.command`.
 
 ## Error handling
 

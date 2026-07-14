@@ -1,12 +1,15 @@
 #!/bin/bash
-# One-time setup: installs whisper-cpp and downloads the speech model.
+# One-time setup: installs whisper-cpp and downloads the speech models.
 # Safe to re-run — skips anything already done.
 set -euo pipefail
 cd "$(dirname "$0")"
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-MODEL_NAME="ggml-large-v3-turbo.bin"   # edit to ggml-large-v3.bin for max accuracy
-MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}"
+# Both models are downloaded so you can pick per transcription (~4.6GB total):
+#   ggml-large-v3.bin        -> "Best quality" (most accurate, ~3GB)
+#   ggml-large-v3-turbo.bin  -> "Fast"         (~4x faster, ~1.6GB)
+MODELS=("ggml-large-v3.bin" "ggml-large-v3-turbo.bin")
+BASE_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
 echo "== Transcribe setup =="
 
@@ -14,7 +17,7 @@ echo "== Transcribe setup =="
 if ! command -v brew >/dev/null 2>&1; then
   echo "ERROR: Homebrew is not installed."
   echo "Install it from https://brew.sh then re-run this file."
-  read -r -p "Press Return to close." _
+  read -r -p "Press Return to close." _ || true
   exit 1
 fi
 
@@ -32,15 +35,17 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   brew install ffmpeg
 fi
 
-# 4. Model
+# 4. Models
 mkdir -p models
-if [ -f "models/${MODEL_NAME}" ]; then
-  echo "Model ${MODEL_NAME} already downloaded — skipping."
-else
-  echo "Downloading model ${MODEL_NAME} (~1.6GB)…"
-  curl -L --fail -o "models/${MODEL_NAME}" "$MODEL_URL"
-fi
+for m in "${MODELS[@]}"; do
+  if [ -f "models/$m" ]; then
+    echo "Model $m already downloaded — skipping."
+  else
+    echo "Downloading model $m …"
+    curl -L --fail -o "models/$m" "$BASE_URL/$m"
+  fi
+done
 
 echo ""
-echo "Setup complete. Drag videos onto Transcribe.app to transcribe them."
+echo "Setup complete. Double-click Transcribe.app to transcribe videos."
 read -r -p "Press Return to close." _ || true
