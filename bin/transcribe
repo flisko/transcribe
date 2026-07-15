@@ -3,11 +3,16 @@
 #   MODEL: best (large-v3, most accurate) | fast (large-v3-turbo, ~4x faster)
 #   LANG:  hr | sl | en | any Whisper code/name | auto (detect)
 # For each video: extract audio (ffmpeg) -> transcribe (whisper) -> <video>.txt + <video>.srt
+#
+# Progress: if TRANSCRIBE_PROGRESS_FILE is set, an overall-percent line is written
+# to it as work proceeds (tab-separated: PCT<tab>INDEX<tab>TOTAL<tab>NAME). The
+# app polls this to drive a progress bar; terminal users can ignore it.
 set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 # Resolve project root (this script lives in <root>/bin)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROGRESS_FILE="${TRANSCRIBE_PROGRESS_FILE:-}"
 
 # Locate whisper binary
 if command -v whisper-cli >/dev/null 2>&1; then WHISPER=whisper-cli
@@ -50,30 +55,63 @@ esac
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
+# Atomically record overall progress (no-op unless a progress file was requested).
+write_progress() {   # $1 = overall percent (0-100)
+  [ -n "$PROGRESS_FILE" ] || return 0
+  printf '%s\t%s\t%s\t%s\n' "$1" "$((FILE_INDEX+1))" "$FILE_TOTAL" "$FILE_NAME" \
+    > "$PROGRESS_FILE.tmp" 2>/dev/null && mv -f "$PROGRESS_FILE.tmp" "$PROGRESS_FILE" 2>/dev/null || true
+}
+
+# Run whisper on one WAV; when a progress file is requested, parse whisper's
+# per-file percentage (-pp) and convert it to an overall percentage.
+run_whisper() {   # $1 = wav, $2 = output prefix
+  if [ -n "$PROGRESS_FILE" ]; then
+    "$WHISPER" -m "$MODEL" -f "$1" -l "$LANG_CODE" -otxt -osrt -of "$2" -pp 2>&1 >/dev/null \
+    | while IFS= read -r line; do
+        case "$line" in
+          *"progress ="*%*)
+            p="${line//[!0-9]/}"          # keep digits only, e.g. 69 or 100
+            [ -n "$p" ] || continue
+            write_progress "$(( (FILE_INDEX * 100 + p) / FILE_TOTAL ))"
+            ;;
+        esac
+      done
+  else
+    "$WHISPER" -m "$MODEL" -f "$1" -l "$LANG_CODE" -otxt -osrt -of "$2" >/dev/null 2>&1
+  fi
+}
+
 echo "Model: $MODEL_NAME"
+FILE_TOTAL="$#"
+FILE_INDEX=-1
+FILE_NAME=""
 ok=0; fail=0
 for f in "$@"; do
+  FILE_INDEX=$((FILE_INDEX + 1))
+  FILE_NAME="$(basename "$f")"
   if [ ! -f "$f" ]; then
     echo "SKIP (not a file): $f" >&2; fail=$((fail+1)); continue
   fi
   base="${f%.*}"                     # strip extension -> output prefix
-  name="$(basename "$f")"
   wav="$tmpdir/audio.wav"
 
-  echo "Transcribing: $name (language=$LANG_CODE)"
+  echo "Transcribing: $FILE_NAME (language=$LANG_CODE)"
+  write_progress "$(( FILE_INDEX * 100 / FILE_TOTAL ))"   # baseline as this file starts
   if ! ffmpeg -y -loglevel error -i "$f" -vn -ar 16000 -ac 1 -c:a pcm_s16le "$wav"; then
-    echo "SKIP (could not read audio): $name" >&2; fail=$((fail+1)); continue
+    echo "SKIP (could not read audio): $FILE_NAME" >&2; fail=$((fail+1)); continue
   fi
 
-  # The && file check catches silent failures (e.g. an invalid language code,
+  run_whisper "$wav" "$base"
+  # The file check catches silent failures (e.g. an invalid language code,
   # which whisper reports but still exits 0 without writing output).
-  if "$WHISPER" -m "$MODEL" -f "$wav" -l "$LANG_CODE" -otxt -osrt -of "$base" >/dev/null 2>&1 && [ -f "${base}.txt" ]; then
+  if [ -f "${base}.txt" ]; then
     echo "  -> ${base}.txt + ${base}.srt"; ok=$((ok+1))
   else
-    echo "SKIP (transcription failed — is the language '$LANG_CODE' valid?): $name" >&2; fail=$((fail+1))
+    echo "SKIP (transcription failed — is the language '$LANG_CODE' valid?): $FILE_NAME" >&2; fail=$((fail+1))
   fi
   rm -f "$wav"
 done
 
+write_progress 100
 echo "Done. $ok succeeded, $fail failed."
 [ "$fail" -eq 0 ]

@@ -13,6 +13,16 @@ on coreScriptPath()
     return (do shell script "dirname " & quoted form of appPosix) & "/bin/transcribe"
 end coreScriptPath
 
+-- Format a seconds count as a friendly ETA string.
+on formatETA(secs)
+    set s to secs as integer
+    if s < 0 then set s to 0
+    if s < 60 then return ("~" & s & "s left")
+    set m to s div 60
+    set r to s mod 60
+    return ("~" & m & "m " & r & "s left")
+end formatETA
+
 -- Double-clicking the app opens a file picker.
 on run
     try
@@ -79,10 +89,71 @@ Type a code or name, for example:
     repeat with f in theFiles
         set filesArg to filesArg & " " & quoted form of (POSIX path of f)
     end repeat
-    display notification "Transcribing with the " & modelSel & " model… this can take a few minutes." with title "Transcribe"
-    -- 2>&1 + true: capture all output and never throw, so we can always show a clear summary.
-    set theResult to do shell script quoted form of coreScript & " " & quoted form of modelSel & " " & quoted form of langAnswer & filesArg & " 2>&1; true"
-    display dialog "Transcription finished." & return & return & theResult & return & return & "Transcript (.txt) and subtitles (.srt) are saved next to each video." buttons {"OK"} default button "OK" with title "Transcribe"
+
+    -- 3. Launch the engine in the background; it writes progress to progFile,
+    --    all its output to resFile, and touches doneFile when finished.
+    set progFile to do shell script "mktemp -t transcribe_prog"
+    set resFile to do shell script "mktemp -t transcribe_res"
+    set doneFile to resFile & ".done"
+    set launchCmd to "( TRANSCRIBE_PROGRESS_FILE=" & quoted form of progFile & " " & quoted form of coreScript & " " & quoted form of modelSel & " " & quoted form of langAnswer & filesArg & " > " & quoted form of resFile & " 2>&1 ; touch " & quoted form of doneFile & " ) >/dev/null 2>&1 &"
+    do shell script launchCmd
+
+    -- 4. Show a native progress bar and poll the progress file until done.
+    set progress total steps to 100
+    set progress completed steps to 0
+    set progress description to "Transcribing with the " & modelSel & " model…"
+    set progress additional description to "Preparing…"
+    set startTime to current date
+
+    repeat
+        set isDone to (do shell script "test -f " & quoted form of doneFile & " && echo 1 || echo 0")
+        set ln to ""
+        try
+            set ln to do shell script "tail -1 " & quoted form of progFile & " 2>/dev/null"
+        end try
+        if ln is not "" then
+            set AppleScript's text item delimiters to tab
+            set parts to text items of ln
+            set AppleScript's text item delimiters to ""
+            if (count of parts) > 2 then
+                set pct to 0
+                try
+                    set pct to (item 1 of parts) as integer
+                end try
+                if pct < 0 then set pct to 0
+                if pct > 100 then set pct to 100
+                set idx to item 2 of parts
+                set tot to item 3 of parts
+                set fname to ""
+                if (count of parts) > 3 then set fname to item 4 of parts
+                set progress completed steps to pct
+                set etaText to "estimating…"
+                if pct > 0 and pct < 100 then
+                    set elapsed to (current date) - startTime
+                    set etaText to formatETA((elapsed * (100 - pct)) / pct)
+                else if pct is 100 then
+                    set etaText to "finishing…"
+                end if
+                set progress additional description to ("File " & idx & " of " & tot & " — " & fname & "   ·   " & etaText)
+            end if
+        end if
+        if isDone is "1" then exit repeat
+        delay 0.3
+    end repeat
+    set progress completed steps to 100
+
+    -- 5. Summarise and clean up.
+    set summary to ""
+    try
+        set summary to do shell script "grep -E '^Done|SKIP|not found' " & quoted form of resFile & " 2>/dev/null"
+    end try
+    if summary is "" then
+        try
+            set summary to do shell script "tail -3 " & quoted form of resFile
+        end try
+    end if
+    do shell script "rm -f " & quoted form of progFile & " " & quoted form of (progFile & ".tmp") & " " & quoted form of resFile & " " & quoted form of doneFile
+    display dialog "Transcription finished." & return & return & summary & return & return & "Transcript (.txt) and subtitles (.srt) are saved next to each video." buttons {"OK"} default button "OK" with title "Transcribe"
 end processFiles
 APPLESCRIPT
 

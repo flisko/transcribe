@@ -22,7 +22,8 @@ each video. No terminal knowledge required for day-to-day use.
      shown in the dialog; defaults to Best quality.
    - A popup asks the **language**: type any Whisper code/name (`hr`, `sl`, `en`,
      `de`, …) or `auto` to detect it. Defaults to `hr`.
-   - Each video is transcribed in turn.
+   - Each video is transcribed in turn, with a **native progress bar and live
+     ETA** (current file, overall percent, estimated time left).
    - A completion dialog reports the result (N succeeded / M failed).
    - For each `VideoName.mov`, a `VideoName.txt` transcript is written in the
      same folder as the video.
@@ -84,9 +85,20 @@ responsibilities:
 - `on open theFiles` (drag-drop): catch dropped files.
 - Both paths call a shared `processFiles` handler: show the model popup
   (Best quality / Fast, with pros/cons), then the language popup
-  (`display dialog … default answer "hr"`), invoke `bin/transcribe` with the
-  model, language, and file paths, then show a completion dialog with the summary.
+  (`display dialog … default answer "hr"`), launch `bin/transcribe` in the
+  background (with `TRANSCRIBE_PROGRESS_FILE` set), drive a native progress bar +
+  ETA by polling that file, then show a completion dialog with the summary.
 - Cancel (error −128) at any dialog exits quietly.
+
+**Progress reporting:** the core, when `TRANSCRIBE_PROGRESS_FILE` is set, runs
+whisper with `-pp` (print-progress), parses its per-file percentage, converts it
+to an overall percent — `(fileIndex*100 + filePct) / fileCount` — and atomically
+writes `PCT<tab>INDEX<tab>TOTAL<tab>NAME` to that file. The app launches the core
+detached (`( … ) >/dev/null 2>&1 &`, returns in ~3ms), polls the file every
+0.3s to update `progress completed steps` + `progress additional description`,
+computes ETA in AppleScript from elapsed time (`elapsed*(100−pct)/pct`), and
+detects completion via a touched sentinel file. Terminal users are unaffected —
+without the env var the core runs whisper normally and prints nothing extra.
 
 No transcription logic lives in the app — it delegates everything to
 `bin/transcribe`. The app resolves `bin/transcribe` **relative to its own

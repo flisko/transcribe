@@ -17,9 +17,10 @@ speech model (~1.6GB). Takes a few minutes. Re-running it is safe.
    - **Fast** — ~4× faster, slightly less accurate.
 4. Type the language when asked — a code or name (`hr`, `sl`, `en`, `de`, …),
    or `auto` to let it detect the language for you.
-5. Wait — a dialog reports when it's finished. Each `Video.mov` gets a
-   `Video.txt` transcript **and** a `Video.srt` subtitle file saved right next
-   to it.
+5. A **progress bar with a live ETA** shows how it's going (which file, and
+   roughly how much time is left). When it finishes, a dialog reports the result.
+   Each `Video.mov` gets a `Video.txt` transcript **and** a `Video.srt` subtitle
+   file saved right next to it.
 
 (You can also drag files straight onto the app icon if you prefer — same result.)
 
