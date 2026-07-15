@@ -15,7 +15,8 @@ speech model (~1.6GB). Takes a few minutes. Re-running it is safe.
 3. Pick the **model** — the dialog explains the trade-off:
    - **Best quality** (recommended) — most accurate for Croatian & Slovenian.
    - **Fast** — ~4× faster, slightly less accurate.
-4. Type the language when asked: `hr` (Croatian) or `sl` (Slovenian).
+4. Type the language when asked — a code or name (`hr`, `sl`, `en`, `de`, …),
+   or `auto` to let it detect the language for you.
 5. Wait — a dialog reports when it's finished. Each `Video.mov` gets a
    `Video.txt` transcript **and** a `Video.srt` subtitle file saved right next
    to it.
@@ -29,13 +30,25 @@ That includes audio (`.mp3`, `.m4a`, `.aac`, `.wav`, `.flac`, `.ogg`, `.opus`,
 `.wma`, `.aiff`) and video (`.mov`, `.mp4`, `.m4v`, `.mkv`, `.avi`, `.webm`,
 `.wmv`, `.flv`, `.mpg`, `.3gp`). A file with no audio track is skipped with a note.
 
+### Languages
+
+Whisper is multilingual (~99 languages), so this isn't limited to Croatian and
+Slovenian. Type any language **code or name** (`hr`, `sl`, `en`, `english`,
+`de`, `it`, `sr`, …) or `auto` to detect it automatically. For high-resource
+languages like English the **Fast** model is nearly as accurate as **Best**, so
+`fast` is a fine choice there; for Croatian/Slovenian and other Balkan languages,
+stick with **Best**.
+
 ## From the Terminal (optional)
 
-`bin/transcribe MODEL LANG file…` where MODEL is `best` or `fast`:
+`bin/transcribe MODEL LANG file…` where MODEL is `best` or `fast`, and LANG is a
+language code/name (`hr`, `sl`, `en`, …) or `auto`:
 
 ```bash
 bin/transcribe best hr path/to/video.mov     # most accurate
 bin/transcribe fast sl clip1.mov clip2.mov   # faster
+bin/transcribe best en interview.mp3         # English
+bin/transcribe best auto mystery.m4a         # auto-detect the language
 ```
 
 ## The two models

@@ -20,8 +20,8 @@ each video. No terminal knowledge required for day-to-day use.
    - A popup asks the **model**: **Best quality** (`large-v3`, most accurate for
      Croatian/Slovenian) or **Fast** (`large-v3-turbo`, ~4× faster). Pros/cons are
      shown in the dialog; defaults to Best quality.
-   - A popup asks the **language**: type `hr` (Croatian) or `sl` (Slovenian).
-     Defaults to `hr`.
+   - A popup asks the **language**: type any Whisper code/name (`hr`, `sl`, `en`,
+     `de`, …) or `auto` to detect it. Defaults to `hr`.
    - Each video is transcribed in turn.
    - A completion dialog reports the result (N succeeded / M failed).
    - For each `VideoName.mov`, a `VideoName.txt` transcript is written in the
@@ -144,7 +144,8 @@ The model→filename mapping lives in `bin/transcribe`; the download list lives 
 
 ## Out of scope (YAGNI)
 
-- Automatic language detection (user types the language).
+- Automatic language detection as the *default* (manual entry is the default,
+  but typing `auto` is supported for opt-in detection).
 - Cloud/API engines (local only).
 - Windows/Linux support (macOS only).
 - Batch language-per-file config, GUI settings panels, progress bars beyond

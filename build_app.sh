@@ -64,7 +64,13 @@ Not sure? Choose Best quality." buttons {"Cancel", "Fast", "Best quality"} defau
 
     -- 2. Choose the language.
     try
-        set langAnswer to text returned of (display dialog "Language? Type hr (Croatian) or sl (Slovenian):" default answer "hr" with title "Transcribe — language")
+        set langAnswer to text returned of (display dialog "Language of the audio?
+
+Type a code or name, for example:
+    hr = Croatian      sl = Slovenian
+    en = English       de = German
+
+… or type  auto  to detect it automatically." default answer "hr" with title "Transcribe — language")
     on error number -128
         return -- user pressed Cancel
     end try

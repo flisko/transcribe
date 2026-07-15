@@ -1,7 +1,7 @@
 #!/bin/bash
 # Core transcriber: bin/transcribe MODEL LANG file1 [file2 ...]
 #   MODEL: best (large-v3, most accurate) | fast (large-v3-turbo, ~4x faster)
-#   LANG:  hr | sl | any Whisper language code
+#   LANG:  hr | sl | en | any Whisper code/name | auto (detect)
 # For each video: extract audio (ffmpeg) -> transcribe (whisper) -> <video>.txt + <video>.srt
 set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -38,13 +38,13 @@ if [ ! -f "$MODEL" ]; then
   exit 1
 fi
 
-# Normalize language (hr/sl or common full names)
+# Language: hr/sl, "auto" to detect, or any Whisper code/name (en, english, de …)
 raw_lang="$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"; shift
 case "$raw_lang" in
   hr|croatian|hrvatski) LANG_CODE=hr ;;
   sl|slovenian|slovene|slovenscina|slovenščina) LANG_CODE=sl ;;
   "" ) LANG_CODE=hr ;;
-  * ) LANG_CODE="$raw_lang" ;;   # pass through any other whisper code
+  * ) LANG_CODE="$raw_lang" ;;   # pass through: en, english, de, auto, etc.
 esac
 
 tmpdir="$(mktemp -d)"
@@ -65,10 +65,12 @@ for f in "$@"; do
     echo "SKIP (could not read audio): $name" >&2; fail=$((fail+1)); continue
   fi
 
-  if "$WHISPER" -m "$MODEL" -f "$wav" -l "$LANG_CODE" -otxt -osrt -of "$base" >/dev/null 2>&1; then
+  # The && file check catches silent failures (e.g. an invalid language code,
+  # which whisper reports but still exits 0 without writing output).
+  if "$WHISPER" -m "$MODEL" -f "$wav" -l "$LANG_CODE" -otxt -osrt -of "$base" >/dev/null 2>&1 && [ -f "${base}.txt" ]; then
     echo "  -> ${base}.txt + ${base}.srt"; ok=$((ok+1))
   else
-    echo "SKIP (transcription failed): $name" >&2; fail=$((fail+1))
+    echo "SKIP (transcription failed — is the language '$LANG_CODE' valid?): $name" >&2; fail=$((fail+1))
   fi
   rm -f "$wav"
 done
