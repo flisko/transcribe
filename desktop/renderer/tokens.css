@@ -1,0 +1,217 @@
+/* generated copy — run npm run sync-tokens */
+/* ==========================================================================
+   Transcribe DS — design tokens (canonical source)
+   ==========================================================================
+   Native macOS app "Transcribe" — local whisper.cpp transcription of files
+   and video links. Accent violet family drawn from the app icon.
+
+   THEMING MODEL
+   - `:root` carries the LIGHT theme.
+   - Dark is applied two ways (keep both blocks in sync):
+       1. `@media (prefers-color-scheme: dark)` — follows the system.
+       2. `[data-theme="dark"]` — explicit override, works on <html> or on
+          any wrapper element (used by colors.html to render a dark column
+          inside a light page). `[data-theme="light"]` forces light back.
+
+   SWIFTUI MAPPING (app/main.swift implements the same language natively)
+   ---------------------------------------------------------------------
+   --color-accent          Color(red: 0.431, green: 0.271, blue: 0.886)  // #6E45E2 — app .tint
+   --color-grad-start      Color(red: 0.361, green: 0.200, blue: 0.780)  // #5C33C7
+   --color-grad-end        Color(red: 0.549, green: 0.341, blue: 0.949)  // #8C57F2
+   --color-success         Color(nsColor: .systemGreen)
+   --color-destructive     Color(nsColor: .systemRed)
+   --color-warning         Color(nsColor: .systemOrange)                 // amber; .systemYellow reads too pale
+   --color-window-bg       Color(nsColor: .windowBackgroundColor)
+   --color-content-bg      Color(nsColor: .controlBackgroundColor)       // list / queue area
+   --color-label           Color.primary          (labelColor)
+   --color-secondary-label Color.secondary        (secondaryLabelColor)
+   --color-tertiary-label  Color(nsColor: .tertiaryLabelColor)
+   --color-quaternary-label Color(nsColor: .quaternaryLabelColor)
+   --color-separator       Color(nsColor: .separatorColor)
+   spacing                 4 pt grid — .padding(16) == var(--space-4)
+   radii                   10 pt cards & drop zone, 6 pt buttons/fields,
+                           Capsule() for progress bars (4 pt tall)
+   type scale              .title2 20 / .title3 15 / .body 13 / .callout 12 / .caption 11
+   ========================================================================== */
+
+:root,
+[data-theme="light"] {
+  /* ---- Accent (violet family from the app icon) --------------------- */
+  --color-accent:          #6E45E2;  /* primary accent — progress fills, prominent buttons, focus */
+  --color-accent-hover:    #6139CE;  /* prominent button hover */
+  --color-accent-pressed:  #5530B8;  /* prominent button pressed */
+  --color-accent-tint:     rgba(110, 69, 226, 0.10); /* drag overlay fill, row flash, banner tint */
+  --color-on-accent:       #FFFFFF;  /* text/glyphs on accent or filled status icons */
+  --color-grad-start:      #5C33C7;  /* brand gradient — icon only, never UI chrome */
+  --color-grad-end:        #8C57F2;
+  --gradient-accent:       linear-gradient(135deg, var(--color-grad-start), var(--color-grad-end));
+  --gradient-btn-sheen:    linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 90%); /* top sheen on prominent buttons */
+
+  /* ---- Status ------------------------------------------------------- */
+  --color-success:         #28A745;  /* done checkmarks — macOS systemGreen, tuned darker for white bg */
+  --color-destructive:     #E0352B;  /* failed icon, invalid-link caption — macOS systemRed tuned */
+  --color-warning:         #F5A200;  /* missing-model triangle — amber, macOS systemOrange family */
+  --color-on-warning:      rgba(0, 0, 0, 0.72); /* glyph inside amber warning triangle */
+
+  /* ---- Backgrounds (macOS semantic) --------------------------------- */
+  --color-window-bg:       #ECECEC;  /* windowBackgroundColor — window chrome, input header */
+  --color-content-bg:      #FFFFFF;  /* controlBackgroundColor — queue list, popovers */
+  --color-card-bg:         #FFFFFF;  /* grouped form boxes, floating cards */
+
+  /* ---- Text (macOS label hierarchy) --------------------------------- */
+  --color-label:            rgba(0, 0, 0, 0.85);  /* labelColor — titles, controls */
+  --color-secondary-label:  rgba(0, 0, 0, 0.50);  /* status lines, captions */
+  --color-tertiary-label:   rgba(0, 0, 0, 0.26);  /* placeholders, annotations */
+  --color-quaternary-label: rgba(0, 0, 0, 0.10);  /* watermark icons (empty state) */
+
+  /* ---- Lines & fills ------------------------------------------------ */
+  --color-separator:       rgba(0, 0, 0, 0.10);   /* dividers, row separators */
+  --color-fill:            rgba(0, 0, 0, 0.045);  /* drop zone bg, quiet fills */
+  --color-track:           rgba(0, 0, 0, 0.08);   /* progress track, switch off-state */
+
+  /* ---- Controls ----------------------------------------------------- */
+  --color-btn-bg:          #FFFFFF;               /* bordered button face */
+  --color-btn-bg-hover:    #F6F6F6;
+  --color-btn-bg-active:   #E8E8E8;
+  --color-btn-border:      rgba(0, 0, 0, 0.15);   /* hairline on buttons/fields/switches */
+  --color-field-bg:        #FFFFFF;               /* text field face */
+  --color-focus-ring:      rgba(110, 69, 226, 0.32);
+  --focus-ring:            0 0 0 3.5px var(--color-focus-ring);
+
+  /* ---- Elevation ----------------------------------------------------- */
+  --shadow-control:  inset 0 0 0 0.5px rgba(0, 0, 0, 0.16), 0 0.5px 2px rgba(0, 0, 0, 0.12);  /* buttons */
+  --shadow-field:    inset 0 0 0 1px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(0, 0, 0, 0.05); /* text fields */
+  --shadow-card:     0 1px 3px rgba(0, 0, 0, 0.10), 0 0 0 0.5px rgba(0, 0, 0, 0.05);           /* cards, banners */
+  --shadow-popover:  0 10px 34px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.10);         /* windows, popovers */
+  --shadow-knob:     0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.08);           /* switch knob */
+
+  /* ---- Window chrome ------------------------------------------------- */
+  --color-traffic-close: #FF5F57;
+  --color-traffic-min:   #FEBC2E;
+  --color-traffic-zoom:  #28C840;
+
+  /* ---- Typography ----------------------------------------------------
+     SF Pro via the system stack; sizes mirror the macOS text styles the
+     SwiftUI app uses. Body 13 is the default control size on macOS.     */
+  --font-family:      -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-family-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-size-title2:  20px;  --line-height-title2: 25px;  /* window-scale headings ("One-time setup") */
+  --font-size-title3:  15px;  --line-height-title3: 20px;  /* section headings ("Ready to transcribe") */
+  --font-size-body:    13px;  --line-height-body:   17px;  /* row titles, controls, default text */
+  --font-size-callout: 12px;  --line-height-callout: 15px; /* quick settings, footer status */
+  --font-size-caption: 11px;  --line-height-caption: 14px; /* row status lines, help captions */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* ---- Spacing (4px grid) -------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;   /* standard window inset */
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ---- Radii ---------------------------------------------------------- */
+  --radius-card:    10px;   /* cards, drop zone, grouped boxes, window corners */
+  --radius-button:  6px;    /* buttons */
+  --radius-field:   6px;    /* text fields */
+  --radius-small:   4px;    /* tags, tiny chips */
+  --radius-capsule: 999px;  /* progress bars, switches, spinners */
+
+  /* ---- Fixed sizes (from the UX spec) --------------------------------- */
+  --size-progress-height: 4px;   /* capsule progress bars */
+  --size-row-height:      56px;  /* queue rows */
+  --size-row-icon:        28px;  /* leading type-icon slot in a row */
+  --size-dropzone-height: 76px;
+  --size-footer-height:   40px;
+  --size-titlebar-height: 44px;  /* unified title bar + toolbar */
+}
+
+/* ---- DARK — follows the system (keep in sync with [data-theme="dark"]) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-accent:          #7E58EC;
+    --color-accent-hover:    #8B69EF;
+    --color-accent-pressed:  #7350DC;
+    --color-accent-tint:     rgba(126, 88, 236, 0.18);
+    --color-on-accent:       #FFFFFF;
+    --color-grad-start:      #5C33C7;
+    --color-grad-end:        #8C57F2;
+
+    --color-success:         #32D74B;
+    --color-destructive:     #FF453A;
+    --color-warning:         #FFB40A;
+    --color-on-warning:      rgba(0, 0, 0, 0.72);
+
+    --color-window-bg:       #282828;
+    --color-content-bg:      #1E1E1E;
+    --color-card-bg:         #303030;
+
+    --color-label:            rgba(255, 255, 255, 0.85);
+    --color-secondary-label:  rgba(255, 255, 255, 0.55);
+    --color-tertiary-label:   rgba(255, 255, 255, 0.28);
+    --color-quaternary-label: rgba(255, 255, 255, 0.12);
+
+    --color-separator:       rgba(255, 255, 255, 0.12);
+    --color-fill:            rgba(255, 255, 255, 0.06);
+    --color-track:           rgba(255, 255, 255, 0.14);
+
+    --color-btn-bg:          rgba(255, 255, 255, 0.21);
+    --color-btn-bg-hover:    rgba(255, 255, 255, 0.27);
+    --color-btn-bg-active:   rgba(255, 255, 255, 0.15);
+    --color-btn-border:      rgba(255, 255, 255, 0.08);
+    --color-field-bg:        rgba(255, 255, 255, 0.065);
+    --color-focus-ring:      rgba(126, 88, 236, 0.50);
+
+    --shadow-control:  inset 0 0.5px 0 rgba(255, 255, 255, 0.14), 0 0.5px 2px rgba(0, 0, 0, 0.50);
+    --shadow-field:    inset 0 0 0 1px rgba(255, 255, 255, 0.10), inset 0 1px 1px rgba(0, 0, 0, 0.20);
+    --shadow-card:     0 1px 3px rgba(0, 0, 0, 0.40), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+    --shadow-popover:  0 10px 34px rgba(0, 0, 0, 0.60), 0 0 0 0.5px rgba(255, 255, 255, 0.10);
+    --shadow-knob:     0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.20);
+  }
+}
+
+/* ---- DARK — explicit override, root or wrapper (mirror of media block) */
+[data-theme="dark"] {
+  --color-accent:          #7E58EC;
+  --color-accent-hover:    #8B69EF;
+  --color-accent-pressed:  #7350DC;
+  --color-accent-tint:     rgba(126, 88, 236, 0.18);
+  --color-on-accent:       #FFFFFF;
+  --color-grad-start:      #5C33C7;
+  --color-grad-end:        #8C57F2;
+
+  --color-success:         #32D74B;
+  --color-destructive:     #FF453A;
+  --color-warning:         #FFB40A;
+  --color-on-warning:      rgba(0, 0, 0, 0.72);
+
+  --color-window-bg:       #282828;
+  --color-content-bg:      #1E1E1E;
+  --color-card-bg:         #303030;
+
+  --color-label:            rgba(255, 255, 255, 0.85);
+  --color-secondary-label:  rgba(255, 255, 255, 0.55);
+  --color-tertiary-label:   rgba(255, 255, 255, 0.28);
+  --color-quaternary-label: rgba(255, 255, 255, 0.12);
+
+  --color-separator:       rgba(255, 255, 255, 0.12);
+  --color-fill:            rgba(255, 255, 255, 0.06);
+  --color-track:           rgba(255, 255, 255, 0.14);
+
+  --color-btn-bg:          rgba(255, 255, 255, 0.21);
+  --color-btn-bg-hover:    rgba(255, 255, 255, 0.27);
+  --color-btn-bg-active:   rgba(255, 255, 255, 0.15);
+  --color-btn-border:      rgba(255, 255, 255, 0.08);
+  --color-field-bg:        rgba(255, 255, 255, 0.065);
+  --color-focus-ring:      rgba(126, 88, 236, 0.50);
+
+  --shadow-control:  inset 0 0.5px 0 rgba(255, 255, 255, 0.14), 0 0.5px 2px rgba(0, 0, 0, 0.50);
+  --shadow-field:    inset 0 0 0 1px rgba(255, 255, 255, 0.10), inset 0 1px 1px rgba(0, 0, 0, 0.20);
+  --shadow-card:     0 1px 3px rgba(0, 0, 0, 0.40), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  --shadow-popover:  0 10px 34px rgba(0, 0, 0, 0.60), 0 0 0 0.5px rgba(255, 255, 255, 0.10);
+  --shadow-knob:     0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.20);
+}

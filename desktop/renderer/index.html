@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+<title>Transcribe</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body id="main">
+
+  <div class="titlebar" id="titlebar">
+    <span class="wt">Transcribe</span>
+    <div class="toolbar">
+      <button class="tbtn" id="clearDoneBtn" title="Remove finished items from the list" hidden>Clear Done</button>
+      <button class="iconbtn gear" id="gearBtn" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="banner" id="banner" hidden>
+    <svg class="dl" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.25"/><path d="M12 7.5v8M8.5 12.5l3.5 3.5 3.5-3.5"/></svg>
+    <span class="msg" id="bannerMsg"></span>
+    <button class="btn small" id="bannerDownloadBtn">Download</button>
+    <button class="dismiss" id="bannerDismissBtn" title="Dismiss">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <div class="inputs" id="inputs">
+    <div class="dropzone" id="dropzone">
+      <svg class="doc" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M12 11v6.5M9 15l3 2.5L15 15"/></svg>
+      <div class="txt">
+        <b>Drop audio or video files here</b>
+        <span>MP3, MP4, MOV, M4A and most other formats</span>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn" id="browseBtn">Browse&#8230;</button>
+    </div>
+
+    <div id="linkArea">
+      <div class="linkrow">
+        <input class="field" type="text" id="linkField" spellcheck="false"
+               placeholder="Paste a video link — YouTube, TikTok, Instagram&#8230;">
+        <button class="btn" id="addBtn" disabled>Add</button>
+      </div>
+      <div class="error" id="linkError" hidden>That doesn&#8217;t look like a link. Copy the video&#8217;s address and paste it here.</div>
+    </div>
+
+    <div id="linksLimited" hidden>
+      <div class="linkrow">
+        <input class="field" type="text" disabled placeholder="Video links need one more component">
+        <button class="btn" id="installBtn">Install&#8230;</button>
+      </div>
+      <div class="hint">Everything else works — this only affects video links.</div>
+    </div>
+
+    <div class="quick">
+      <button class="qs" id="langBtn">Language: <span id="langName"></span>
+        <span class="chev"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg></span>
+      </button>
+      <button class="qs" id="modelBtn">Model: <span id="modelName"></span>
+        <span class="chev"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="content" id="content">
+    <div class="queue" id="queue" tabindex="0"></div>
+
+    <div class="empty" id="empty" hidden>
+      <svg class="glyph" width="44" height="44" viewBox="0 0 24 24"><g fill="currentColor"><path d="M5.6 6a3.3 3.3 0 0 0-2.8 3.3c0 1.1.8 1.9 1.8 1.9s1.7-.8 1.7-1.8c0-.9-.6-1.6-1.5-1.8.2-.5.7-1 1.3-1.2z"/><path d="M10.6 6a3.3 3.3 0 0 0-2.8 3.3c0 1.1.8 1.9 1.8 1.9s1.7-.8 1.7-1.8c0-.9-.6-1.6-1.5-1.8.2-.5.7-1 1.3-1.2z"/></g><g stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"><path d="M14.5 7.5H21M14.5 11H21M3 15h18M3 18.5h13"/></g></svg>
+      <h2>Ready to transcribe</h2>
+      <p>Drop a file above, or paste a video link.<br>Each file gets a transcript (.txt) and subtitles (.srt).</p>
+    </div>
+
+    <div class="setup" id="setup" hidden>
+      <svg class="glyph" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a1.8 1.8 0 0 0-.9-1.56l-7.2-4.1a1.8 1.8 0 0 0-1.8 0l-7.2 4.1A1.8 1.8 0 0 0 3 8v8a1.8 1.8 0 0 0 .9 1.56l7.2 4.1a1.8 1.8 0 0 0 1.8 0l7.2-4.1A1.8 1.8 0 0 0 21 16z"/><path d="M3.3 7.1 12 12l8.7-4.9M12 22V12"/><path d="M7.6 4.6l8.9 5.1"/></svg>
+      <h2>One-time setup</h2>
+      <p class="intro">Transcribe needs a few free components before it can start. Everything runs on your Mac — nothing is uploaded.</p>
+      <div class="checklist" id="checklist"></div>
+      <p class="engine-missing" id="engineMissing" hidden>Transcribe can&#8217;t find its engine. Keep Transcribe.app inside the Transcribe folder, next to &#8220;bin&#8221; and &#8220;models&#8221;, then click Check Again.</p>
+      <div class="btns">
+        <button class="btn prominent" id="runSetupBtn">Run Setup&#8230;</button>
+        <button class="btn" id="checkAgainBtn">Check Again</button>
+      </div>
+      <p class="foot">Setup opens the Terminal and takes a few minutes, mostly downloading. It&#8217;s safe to run more than once.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="agg" id="footerText"></span>
+    <button class="btn" id="cancelAllBtn" hidden>Cancel All</button>
+  </div>
+
+  <div class="drop-overlay" id="dropOverlay" hidden>
+    <div class="inner">
+      <svg width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="var(--color-accent)"/><path d="M12 7.5v9M7.5 12h9" stroke="var(--color-on-accent)" stroke-width="2" stroke-linecap="round"/></svg>
+      <b id="dropOverlayText">Drop to add to the queue</b>
+    </div>
+  </div>
+
+  <script src="popover.js"></script>
+  <script src="view.js"></script>
+</body>
+</html>

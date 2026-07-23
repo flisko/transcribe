@@ -1,13 +1,18 @@
 # Transcribe
 
 Drop audio or video files — or paste a YouTube, Instagram, or TikTok link —
-and get a transcript plus subtitles, running fully on your Mac with
-whisper.cpp. No cloud, no cost, no data leaves your computer.
+and get a transcript plus subtitles, running fully on your own computer with
+whisper.cpp. No cloud, no cost, no data leaves your machine. One app, for
+both **macOS** and **Windows**.
 
-## Installing from a downloaded zip
+The speech models (~4.6GB) are **never inside the app or its updates** —
+they're downloaded separately to your machine by the one-time setup below,
+and they stay put across updates.
 
-Downloaded a release zip (from the in-app update banner or the GitHub
-releases page)? Three steps:
+## Installing on macOS
+
+Downloaded `Transcribe-macos-v….zip` (from the in-app update banner or the
+GitHub releases page)? Three steps:
 
 1. **Unzip it.** You get a `Transcribe` folder — move it wherever you like
    (or just leave it in Downloads).
@@ -21,32 +26,44 @@ releases page)? Three steps:
    Prefer to skip Terminal? Double-click `setup.command`, let macOS refuse,
    then open **System Settings → Privacy & Security**, scroll down, and click
    **Open Anyway** (you may need to do the same for `Transcribe.app` later).
-3. **Run `setup.command`** — the first-time setup below.
+3. **Run `setup.command`** — the first-time setup. It installs the free
+   components the app relies on (whisper.cpp for speech recognition, ffmpeg
+   for audio, yt-dlp for video links — via [Homebrew](https://brew.sh)) and
+   downloads the speech models (~4.6GB total). Takes a few minutes.
+   Re-running it is safe.
 
-## First-time setup (once)
+## Installing on Windows
 
-Double-click **`setup.command`**. It installs the free components the app
-relies on (whisper.cpp for speech recognition, ffmpeg for audio, yt-dlp for
-video links) and downloads the speech models (~4.6GB total). Takes a few
-minutes. Re-running it is safe.
+Downloaded `Transcribe-windows-v….zip`? Three steps:
+
+1. **Unzip it.** You get a `Transcribe` folder — move it wherever you like.
+2. **Know what Windows will say.** The first time you run something new and
+   unsigned, SmartScreen shows a blue "Windows protected your PC" screen —
+   that's Windows being cautious about any new app, not a problem with this
+   one. Click **More info → Run anyway**. Expect it once for the setup and
+   once for the app; after that it won't ask again.
+3. **Run `Transcribe Setup.bat`** (double-click). It downloads the free
+   components the app relies on (whisper.cpp, ffmpeg, yt-dlp) into the
+   folder's own `tools` directory, plus the speech models (~4.6GB total).
+   Takes a few minutes. Re-running it is safe.
 
 If anything is missing, the app notices on launch and shows a setup checklist
-with a **Run Setup…** button — so you can also just open the app and follow
-along.
+with a **Run Setup…** button — so on either system you can also just open the
+app and follow along.
 
 ## Everyday use
 
-1. **Double-click `Transcribe.app`.**
+1. **Open the app** — `Transcribe.app` on macOS, `Transcribe.exe` on Windows.
 2. Check the **language** and **model** shown at the top of the window —
    they're remembered between launches.
 3. Add things to the queue, in any mix:
-   - **Drop files** anywhere on the window (or click **Browse…**, or drop
-     them on the Dock icon).
+   - **Drop files** anywhere on the window (or click **Browse…** — on macOS
+     you can also drop them on the Dock icon).
    - **Paste a video link** — YouTube, TikTok, Instagram, and most other
      video sites — and click **Add**.
 4. Everything starts by itself and runs through a queue, each row showing a
    **live progress bar and time estimate**. You can keep adding while it
-   works, cancel any item, or close the window — it keeps going and can
+   works, cancel any item, or switch to other apps — it keeps going and can
    notify you when the queue finishes.
 5. When a row says **Done**, click **Open** to read the transcript. Each file
    gets a `.txt` transcript **and** a `.srt` subtitle file saved right next
@@ -61,9 +78,9 @@ file"** in Settings, where you can also choose which folder downloads go to.
 
 ### Settings
 
-The gear button (or Cmd+,) holds the handful of options: model, language,
-the keep-video toggle, the download folder, and whether to notify you when
-the queue finishes.
+The gear button (or Cmd+, on macOS, Ctrl+, on Windows) holds the handful of
+options: model, language, the keep-video toggle, the download folder, and
+whether to notify you when the queue finishes.
 
 ### Supported formats
 
@@ -85,12 +102,16 @@ Balkan languages, stick with **Best quality**.
 ## Updates
 
 When a new version is released, a banner appears at the top of the window —
-click **Download** to grab it. The check is quiet and never interrupts your
-work; if it can't reach the internet, nothing happens. (It activates once the
-project is published on GitHub — see `docs/RELEASING.md`. Apps rebuilt
-locally with `build_app.sh` skip the check entirely.)
+click **Download** to grab the zip for your system. Updates never include the
+models: replace the app, keep your `models` folder, and nothing re-downloads.
+The check is quiet and never interrupts your work; if it can't reach the
+internet, nothing happens. (It activates once the project is published on
+GitHub — see `docs/RELEASING.md`. Apps built locally skip the check entirely.)
 
-## From the Terminal (optional)
+## From the Terminal (macOS only)
+
+The `bin/` scripts wrap the same engine for shell use. They're Bash and ship
+only in the macOS zip — on Windows, use the app.
 
 `bin/transcribe MODEL LANG file…` where MODEL is `best` or `fast`, and LANG is
 a language code/name (`hr`, `sl`, `en`, …) or `auto`:
@@ -102,8 +123,8 @@ bin/transcribe best en interview.mp3         # English
 bin/transcribe best auto mystery.m4a         # auto-detect the language
 ```
 
-`bin/download` fetches a video link into a folder (it's what the app uses
-under the hood) — then transcribe the result like any file:
+`bin/download` fetches a video link into a folder — then transcribe the
+result like any file:
 
 ```bash
 bin/download get audio "https://www.youtube.com/watch?v=…" ~/Downloads   # audio only — fastest
@@ -113,7 +134,7 @@ bin/download info "https://www.youtube.com/watch?v=…"                    # pee
 
 ## The models
 
-The two main models are downloaded by `setup.command` (~4.6GB total) so you can
+The two main models are downloaded by the setup (~4.6GB total) so you can
 switch per transcription with no extra wait:
 
 | Model | Whisper model | Best for | Trade-off |
@@ -128,42 +149,43 @@ of lower-resource languages.
 Four smaller optional models are also available in the app's Model menu —
 **Medium** (`medium`, ~1.5GB), **Small** (`small`, ~0.5GB), **Base** (`base`,
 ~150MB), and **Tiny** (`tiny`, ~80MB). Each step down is faster and less
-accurate. They aren't downloaded by default: re-run `setup.command` and answer
-**y** when it offers the extra models (or run `./setup.command --all-models`
-from the Terminal). Picking a model that isn't downloaded simply marks that
-item as failed with a note telling you how to get it.
+accurate. They aren't downloaded by default: re-run the setup and answer
+**y** when it offers the extra models (macOS Terminal:
+`./setup.command --all-models`; Windows PowerShell:
+`.\setup.ps1 -AllModels`). Picking a model that isn't downloaded simply marks
+that item as failed with a note telling you how to get it.
 
-## Moving the folder / using it on another Mac
+## Moving the folder / using it on another computer
 
-The app finds its engine **relative to itself**, so you can move or rename the
-whole `transcribe` folder freely — no rebuild needed. Just keep the folder
-together: `Transcribe.app`, `bin/`, and `models/` must stay side by side.
+The app finds everything **relative to itself**, so you can move or rename
+the whole `Transcribe` folder freely — no reinstall needed. Just keep the
+folder together: the app, `models/`, and (on Windows) `tools/` must stay
+side by side.
 
-To set it up on **another Mac**:
+To set it up on **another machine**:
 
-1. Copy the **whole `transcribe` folder** (not just the app). If you copy the
-   `models/` folder too, you skip the ~4.6GB re-download.
-2. On that Mac, macOS may block the copied app the first time ("unidentified
-   developer"). Either **right-click the app → Open → Open**, or run this once
-   in Terminal to clear the flag for the whole folder:
-   ```bash
-   xattr -dr com.apple.quarantine /path/to/transcribe
-   ```
-3. Double-click **`setup.command`** on that Mac once. It installs whisper.cpp,
-   ffmpeg, and yt-dlp via Homebrew (and downloads the models if you didn't
-   copy them).
-   > Requires [Homebrew](https://brew.sh); `setup.command` tells you if it's
-   > missing.
-4. Use `Transcribe.app` as normal.
+1. Copy the **whole folder** (not just the app). If you copy `models/` too,
+   you skip the ~4.6GB re-download; copying `tools/` on Windows skips the
+   tool downloads as well.
+2. Get past the one-time security prompt on that machine — the `xattr`
+   command (macOS) or SmartScreen's **More info → Run anyway** (Windows),
+   exactly as in the install sections above.
+3. Run the setup once on that machine — `setup.command` (macOS, needs
+   [Homebrew](https://brew.sh)) or `Transcribe Setup.bat` (Windows). It
+   installs whatever wasn't copied and skips whatever was.
+4. Use the app as normal.
 
-## Rebuilding the app
+## Building the app yourself
 
-Only needed if you change the app's source in `app/`:
+Only needed if you change the source in `desktop/`. Requires **Node 22**:
 
 ```bash
-./build_app.sh
+cd desktop
+npm ci          # once
+npm start       # run the app from source
 ```
 
-This compiles the Swift app into a universal `Transcribe.app` (Apple Silicon
-+ Intel, macOS 13+). The **build** Mac needs the Xcode Command Line Tools
-(`xcode-select --install`) — Macs that just *run* the app don't.
+`npm test` runs the unit tests, `npm run dist` packages the app for the
+platform you're on (into `desktop/dist/` — never committed). Locally built
+apps carry version `0.0.0-dev` and skip the update check; real versioning
+and both release zips come from CI — see `docs/RELEASING.md`.

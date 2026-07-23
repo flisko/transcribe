@@ -8,7 +8,7 @@ turn the whole machine on. This is the reference for the future maintainer
 
 **Do this before the first `git push`, and absolutely before making the repo
 public.** The personal test video `IMG_2827.mov` was removed from the index
-(it's no longer tracked), but it still sits inside the 12 historical commits —
+(it's no longer tracked), but it still sits inside the historical commits —
 anyone who clones the repo gets the private recording, forever. This is a
 privacy requirement, not housekeeping: it's trivial to fix now and impossible
 to fully undo once the repo has been published (clones, forks, and caches keep
@@ -33,23 +33,52 @@ git log --all --oneline -- IMG_2827.mov
 
 Once the project lives on GitHub (see "Activating releases" below), the
 workflow in `.github/workflows/release.yml` runs automatically on every push
-to `main` (or manually via the Actions tab → "release" → Run workflow):
+to `main` (or manually via the Actions tab → "release" → Run workflow). Three
+jobs:
 
-1. A macOS runner checks out the repo.
-2. It computes the release version: `$(cat VERSION).<run number>` —
+**build-mac** (macOS runner):
+1. Computes the release version: `$(cat VERSION).<run number>` —
    e.g. `VERSION` contains `1.0` and this is workflow run 42 → `1.0.42`.
-3. It runs `./build_app.sh --version 1.0.42 --update-repo <owner>/<repo>`,
-   which compiles `app/*.swift` into a universal (Apple Silicon + Intel)
-   `Transcribe.app` with that version and repo slug baked into its Info.plist.
-4. It stages a `Transcribe/` folder containing `Transcribe.app`, `bin/`,
+2. `npm ci` + unit tests (`node --test`) in `desktop/`.
+3. `electron-builder --mac --universal` builds `Transcribe.app` (Apple
+   Silicon + Intel), with the version and the repo slug baked into the
+   packaged `package.json` via `extraMetadata` — that slug is what the
+   update banner polls.
+4. Stages a `Transcribe/` folder containing `Transcribe.app`, `bin/`,
    `setup.command`, and `README.md` — **never `models/`** — and zips it with
    `ditto` (preserves the .app structure and permission bits that plain zip
-   can mangle).
-5. It creates git tag `v1.0.42` plus a GitHub release with auto-generated
-   notes and the asset `Transcribe-macos-v1.0.42.zip`.
+   can mangle) as `Transcribe-macos-v1.0.42.zip`.
 
-That release is what users download, and what existing apps compare
-themselves against.
+**build-win** (Windows runner):
+1. Same version computation, `npm ci`, and unit tests.
+2. **A real smoke test**: runs `setup.ps1 -ToolsOnly` — the same script users
+   run — which downloads whisper.cpp, ffmpeg, yt-dlp, and deno into
+   `tools/win/`, then runs the engine integration tests against those real
+   binaries (yt-dlp metadata lookup hits a real URL). Models are never
+   downloaded in CI; model-dependent tests self-skip.
+3. `electron-builder --win` builds `Transcribe.exe` (same `extraMetadata`
+   baking).
+4. Stages a `Transcribe/` folder containing the unpacked app (Transcribe.exe
+   + resources), `Transcribe Setup.bat`, `setup.ps1`, and `README.md` —
+   **never `models/` or `tools/`** — and zips it with `Compress-Archive` as
+   `Transcribe-windows-v1.0.42.zip`.
+
+**release** (needs both): creates git tag `v1.0.42` plus a GitHub release
+with auto-generated notes and **both** zips, `--target`-pinned to the exact
+commit the zips were built from.
+
+Those release assets are what users download, and what existing apps compare
+themselves against. If either platform's build or smoke fails, nothing is
+released for anyone — a half-release (one platform only) can't happen.
+
+> **CI is the first Windows validation.** There is no local Windows machine
+> in this project's development loop — the mac side of the engine and app is
+> exercised locally (unit + integration + Playwright), but the Windows build,
+> `setup.ps1`'s tool downloads, and the Windows engine paths are proven **for
+> the first time by the build-win job**. Expect the first few pushes to main
+> to be shakedown runs: read build-win's logs closely, and treat a green
+> build-win as a meaningful signal, not a formality. When touching
+> engine/paths/setup code, remember Windows behavior is only verified there.
 
 ## Activating releases (one-time)
 
@@ -78,57 +107,47 @@ configure — the workflow uses the automatic `github.token`, no secrets needed.
 > **Private vs public:** a private repo is fine for *building* releases, but
 > the app's update check calls the GitHub API anonymously — against a private
 > repo it gets a 404 and stays silent, and users couldn't download the zip
-> anyway. When you want other people's Macs to see update banners, make the
-> repo public (github.com → repo Settings → Danger Zone → Change visibility,
-> or `gh repo edit flisko/transcribe --visibility public`).
+> anyway. When you want other people's machines to see update banners, make
+> the repo public (github.com → repo Settings → Danger Zone → Change
+> visibility, or `gh repo edit flisko/transcribe --visibility public`).
 
 ## How users get the update warning
 
-Apps built by CI carry two Info.plist values: their own version
-(`CFBundleShortVersionString`, e.g. `1.0.42`) and the repo slug
-(`TranscribeUpdateRepo`, e.g. `flisko/transcribe`).
+Apps built by CI carry two values in their packaged `package.json`, injected
+by electron-builder's `extraMetadata`: their own version (e.g. `1.0.42`) and
+the repo slug (`updateRepo`, e.g. `flisko/transcribe`).
 
 On launch, the app quietly asks
 `https://api.github.com/repos/<slug>/releases/latest` for the newest tag
-(5-second timeout, silent on any failure — no network, no nagging). If that
+(short timeout, silent on any failure — no network, no nagging). If that
 tag's version is newer than its own, a small banner appears at the top of the
 window: **"Version X.Y.Z is available." [Download]** — Download opens the
-release page in the browser, where the user grabs the new zip. No
+release page in the browser, where the user grabs the zip for their OS. No
 auto-update, deliberately: users replace the folder the same way they
-installed it, and their `models/` stays where it is.
+installed it, and their `models/` (and `tools/` on Windows) stays where it is.
 
-**Why local builds never warn:** running `./build_app.sh` by hand bakes an
-*empty* `TranscribeUpdateRepo`, which disables the check entirely. Only
-CI-built apps know where to look. So you can rebuild and experiment locally
-without ever seeing (or triggering) update banners.
+**Why local builds never warn:** `npm start` and a local `npm run dist` bake
+*no* `updateRepo` and version `0.0.0-dev`, which disables the check entirely.
+Only CI-built apps know where to look. So you can rebuild and experiment
+locally without ever seeing (or triggering) update banners.
 
 ## How versioning works
 
 - `VERSION` in the repo root holds **major.minor** only (currently `1.0`).
 - CI appends the workflow **run number** as the patch: `1.0.42`, `1.0.43`, …
-  Every push to main gets a unique, increasing version with zero bookkeeping.
+  Every push to main gets a unique, increasing version with zero bookkeeping,
+  and both platforms' zips in one release always share one version.
 - Bump `VERSION` to `1.1` / `2.0` when it feels like a bigger step. The run
   number keeps counting upward regardless, so versions still sort correctly
   (`1.0.42` → `1.1.43`).
-- Local builds are always `<major.minor>.0` (e.g. `1.0.0`), which sorts below
-  every CI build of the same major.minor.
-
-## Adding a Windows build later
-
-`release.yml` ends with a commented-out template for a `windows` job — the
-shape is: build on `windows-latest`, zip as
-`Transcribe-windows-v<version>.zip`, and `gh release upload` it to the same
-release the macos job created (`needs: macos`).
-
-Keep the per-platform asset naming. The app-side update check needs **no
-changes** for this: each platform ships its own binary, so a Mac app and a
-Windows app each compare against the same latest release and point their
-users at the same release page, where both zips sit side by side.
+- Local builds are always `0.0.0-dev`, which sorts below every CI build and
+  never triggers a banner.
 
 ## The models (4.6GB)
 
-Never put `models/` in a release — the zips would balloon from ~5MB to
-~4.6GB, and GitHub caps release assets at 2GB anyway. The models are public
-downloads from Hugging Face; `setup.command` fetches them on each user's Mac
-(and skips them if they're already there, e.g. copied from another Mac).
-`.gitignore` keeps them out of the repo for the same reason.
+Never put `models/` (or Windows' `tools/`) in a release — the zips would
+balloon from ~100MB to multiple GB, and GitHub caps release assets at 2GB
+anyway. The models are public downloads from Hugging Face; `setup.command`
+(macOS) and `Transcribe Setup.bat` (Windows) fetch them on each user's
+machine — and skip them if they're already there, e.g. copied from another
+machine. `.gitignore` keeps them out of the repo for the same reason.

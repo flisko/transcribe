@@ -1,0 +1,23 @@
+{
+  "name": "transcribe",
+  "productName": "Transcribe",
+  "version": "0.0.0-dev",
+  "description": "Local transcription of audio, video, and video links — whisper.cpp, no cloud.",
+  "author": "flisko",
+  "license": "MIT",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/unit",
+    "test:integration": "node --test test/integration",
+    "e2e": "playwright test",
+    "sync-tokens": "node scripts/sync-tokens.js",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  }
+}

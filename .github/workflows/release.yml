@@ -1,7 +1,12 @@
-# Builds and publishes a macOS release on every push to main.
+# Builds and publishes a macOS + Windows release on every push to main.
 # Dormant until this project is pushed to a GitHub repo — see docs/RELEASING.md
 # for how to activate it, how versioning works, and how the in-app update
 # banner connects to these releases.
+#
+# NOTE: this is also the project's first REAL Windows validation — no local
+# Windows machine exists. The build-win job therefore runs a genuine smoke
+# (setup.ps1 tool download + yt-dlp engine tests) before packaging, so a
+# broken Windows build fails the release instead of shipping.
 name: release
 
 on:
@@ -19,67 +24,157 @@ permissions:
   contents: write # creating the tag + release needs write access
 
 jobs:
-  macos:
+  build-mac:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
       # Patch number = workflow run number, so every push to main gets a
       # unique, increasing version: VERSION=1.0 + run 42 -> v1.0.42.
+      # (tr strips any stray whitespace/CRLF the VERSION file might carry.)
       - name: Compute release version
-        run: echo "RELEASE_VERSION=$(cat VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
+        run: echo "RELEASE_VERSION=$(tr -d '[:space:]' < VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
 
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: desktop
+        run: npm test
+
+      # extraMetadata bakes the version and the update-check repo slug into
+      # the packaged package.json — local builds get neither, which keeps
+      # their update banner off. --universal preserves the 2.0 promise:
+      # one app for Apple Silicon + Intel.
       - name: Build Transcribe.app
-        run: ./build_app.sh --version "$RELEASE_VERSION" --update-repo "$GITHUB_REPOSITORY"
+        working-directory: desktop
+        env:
+          TRANSCRIBE_UPDATE_REPO: ${{ github.repository }}
+        run: |
+          npx electron-builder --mac --universal \
+            -c.extraMetadata.version="$RELEASE_VERSION" \
+            -c.extraMetadata.updateRepo="$TRANSCRIBE_UPDATE_REPO"
 
       # The zip holds the same folder users copy between Macs: app + engine
       # scripts + setup + README. Models are NEVER shipped (4.6GB) —
       # setup.command downloads them on the user's Mac. ditto (not zip)
-      # preserves the .app bundle structure, signature, and permission bits.
+      # preserves the .app bundle structure and permission bits.
       - name: Stage and zip the release folder
         run: |
           mkdir -p stage/Transcribe
-          ditto Transcribe.app stage/Transcribe/Transcribe.app
+          ditto desktop/dist/mac-universal/Transcribe.app stage/Transcribe/Transcribe.app
           ditto bin stage/Transcribe/bin
           cp setup.command README.md stage/Transcribe/
           ditto -c -k --keepParent stage/Transcribe "Transcribe-macos-v${RELEASE_VERSION}.zip"
 
-      # Creates tag v<version> AND the release in one step. The app's update
-      # check reads releases/latest, so publishing here is what makes every
-      # older app show its "new version available" banner. --target pins the
-      # tag to the exact commit this zip was built from — without it, gh tags
-      # whatever main's HEAD is by release time, which can be a newer push.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-zip
+          path: Transcribe-macos-v*.zip
+          if-no-files-found: error
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Compute release version
+        shell: bash
+        run: echo "RELEASE_VERSION=$(tr -d '[:space:]' < VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: desktop
+        run: npm test
+
+      # REAL smoke, part 1: the same setup users run, minus the ~4.6GB models
+      # — proves the tool downloads (whisper/ffmpeg/yt-dlp/deno) and the
+      # script itself work on a clean Windows machine.
+      - name: Smoke - setup.ps1 downloads the Windows tools
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -ToolsOnly
+          foreach ($t in 'whisper\whisper-cli.exe','ffmpeg\ffmpeg.exe','yt-dlp\yt-dlp.exe','deno\deno.exe') {
+            if (-not (Test-Path "tools\win\$t")) { throw "missing tool after setup: $t" }
+          }
+
+      # REAL smoke, part 2: engine integration tests against the tools that
+      # setup.ps1 just installed (yt-dlp dlInfo hits a real URL). Tests that
+      # need the speech models self-skip — models are never downloaded in CI.
+      - name: Smoke - engine tests against real tools
+        working-directory: desktop
+        env:
+          TRANSCRIBE_ROOT: ${{ github.workspace }}
+        run: npm run test:integration
+
+      - name: Build Transcribe.exe
+        working-directory: desktop
+        env:
+          TRANSCRIBE_UPDATE_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          npx electron-builder --win \
+            -c.extraMetadata.version="$RELEASE_VERSION" \
+            -c.extraMetadata.updateRepo="$TRANSCRIBE_UPDATE_REPO"
+
+      # Windows layout: Transcribe.exe + resources at the folder top (the
+      # win-unpacked contents), setup beside them. Models NEVER shipped —
+      # "Transcribe Setup.bat" downloads them on the user's machine.
+      - name: Stage and zip the release folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path stage/Transcribe | Out-Null
+          Copy-Item -Recurse desktop/dist/win-unpacked/* stage/Transcribe/
+          Copy-Item 'Transcribe Setup.bat', 'setup.ps1', 'README.md' stage/Transcribe/
+          Compress-Archive -Path stage/Transcribe -DestinationPath "Transcribe-windows-v$env:RELEASE_VERSION.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-zip
+          path: Transcribe-windows-v*.zip
+          if-no-files-found: error
+
+  # Creates tag v<version> AND the release with BOTH zips in one step. The
+  # app's update check reads releases/latest, so publishing here is what makes
+  # every older app show its "new version available" banner. --target pins the
+  # tag to the exact commit these zips were built from — without it, gh tags
+  # whatever main's HEAD is by release time, which can be a newer push.
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-mac, build-win]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute release version
+        run: echo "RELEASE_VERSION=$(tr -d '[:space:]' < VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "v${RELEASE_VERSION}" \
             "Transcribe-macos-v${RELEASE_VERSION}.zip" \
+            "Transcribe-windows-v${RELEASE_VERSION}.zip" \
             --target "$GITHUB_SHA" \
             --title "Transcribe v${RELEASE_VERSION}" \
             --generate-notes
-
-  # --------------------------------------------------------------------------
-  # FUTURE: the Windows build slots in here as a second job, e.g.:
-  #
-  #   windows:
-  #     runs-on: windows-latest
-  #     needs: macos          # wait for the release to exist, then attach
-  #     steps:
-  #       - uses: actions/checkout@v4
-  #       - name: Compute release version
-  #         run: echo "RELEASE_VERSION=$(cat VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
-  #         shell: bash
-  #       - ... build the Windows app ...
-  #       - ... zip it as Transcribe-windows-v${RELEASE_VERSION}.zip ...
-  #       - name: Attach to the release
-  #         env:
-  #           GH_TOKEN: ${{ github.token }}
-  #         run: gh release upload "v${RELEASE_VERSION}" "Transcribe-windows-v${RELEASE_VERSION}.zip"
-  #         shell: bash
-  #
-  # Keep per-platform asset names (Transcribe-<platform>-vX.Y.Z.zip). The
-  # in-app update check needs no changes for this: each platform ships its own
-  # binary, so every platform's banner points at the same release page and
-  # users download the zip for their machine. See docs/RELEASING.md.
-  # --------------------------------------------------------------------------

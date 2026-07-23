@@ -1,10 +1,10 @@
 # Transcribe DS — design-system source
 
-This directory is the design source of truth for **Transcribe**, the native macOS app
-(local whisper.cpp transcription of files and video links). It is authored as a
-[claude.ai/design](https://claude.ai/design) design-system project: every HTML file in
-`cards/` renders as one preview card, grouped by its first-line marker comment
-(`<!-- @dsCard group="…" -->`).
+This directory is the design source of truth for **Transcribe**, the cross-platform
+(macOS + Windows) Electron app (local whisper.cpp transcription of files and video
+links). It is authored as a [claude.ai/design](https://claude.ai/design) design-system
+project: every HTML file in `cards/` renders as one preview card, grouped by its
+first-line marker comment (`<!-- @dsCard group="…" -->`).
 
 ## Contents
 
@@ -35,26 +35,25 @@ href="../tokens.css">`. No colors are hardcoded in cards — everything paints t
 light and dark (system `prefers-color-scheme`, or force with `data-theme="dark" |
 "light"` on any element — `colors.html` uses that to show both themes at once).
 
-## Token → SwiftUI mapping
+## How the app consumes the tokens
 
-The app (the Swift sources in `app/`) implements this language natively. The full
-mapping lives in the comment header of `tokens.css`; the short version:
+The Electron renderer (`desktop/renderer/`) styles itself **directly with this
+`tokens.css`** — no translation layer. `desktop/renderer/tokens.css` is a tracked,
+byte-exact copy that ships inside the app; after editing tokens here, refresh it with:
 
-| Token | SwiftUI |
-| --- | --- |
-| `--color-accent` `#6E45E2` | `Color(red: 0.431, green: 0.271, blue: 0.886)` — app-wide `.tint` |
-| `--color-grad-start/end` | `#5C33C7` / `#8C57F2` — app icon only, never UI chrome |
-| `--color-success/destructive/warning` | `.systemGreen` / `.systemRed` / `.systemOrange` |
-| `--color-window-bg`, `--color-content-bg` | `.windowBackgroundColor`, `.controlBackgroundColor` |
-| `--color-label` … `--color-quaternary-label` | `Color.primary`, `.secondary`, `.tertiaryLabelColor`, `.quaternaryLabelColor` |
-| `--color-separator` | `.separatorColor` |
-| `--space-*` (4px grid) | `.padding(16)` == `--space-4`, etc. |
-| `--radius-card` 10 / `--radius-button` 6 / capsule | `RoundedRectangle(cornerRadius: 10/6)`, `Capsule()` progress (4pt tall) |
-| Type scale 20/15/13/12/11 | `.title2` / `.title3` / `.body` / `.callout` / `.caption` |
+```bash
+cd desktop && npm run sync-tokens
+```
 
-Dark-mode values differ for most tokens (see the two dark blocks in `tokens.css`); on
-the SwiftUI side the semantic NSColors adapt automatically — only the accent shades are
-explicit.
+(runs `desktop/scripts/sync-tokens.js`, which copies `design/tokens.css` →
+`desktop/renderer/tokens.css`). Never edit the renderer copy — it gets overwritten.
+The cards in `cards/` are equally literal: the renderer's markup and CSS are built
+from them (`queue-rows.html` is the row anatomy, `settings.html` is the settings
+window, and so on), so a change to a card is a change to the app's UI spec.
+
+Light + dark work the same way in the app as in the cards: the two dark blocks in
+`tokens.css` respond to `prefers-color-scheme` and to a forced `data-theme`
+attribute, which the renderer sets from Electron's `nativeTheme`.
 
 ## Re-syncing to claude.ai/design
 
@@ -69,8 +68,9 @@ after editing:
    under its marker's group.
 3. Sanity checks before pushing: every `var(--…)` referenced by a card is defined in
    `tokens.css`; every card starts with the marker line; cards render at 600–800px wide
-   in both light and dark.
+   in both light and dark; `npm run sync-tokens` has been re-run so the app copy
+   matches.
 
 User-facing copy in the cards is verbatim from the UX spec (see
 `docs/superpowers/specs/2026-07-23-transcribe-2-design.md`) — change it there first,
-then here, then in `app/Copy.swift`.
+then here, then in `desktop/shared/copy.js`.

@@ -1,7 +1,15 @@
 # Build artifact — releases carry it, local builds recreate it.
 Transcribe.app/
-# 4.6GB of models — setup.command downloads them, never git.
+# 4.6GB of models — setup downloads them on each machine, never git.
 models/
+# Windows tool binaries (whisper/ffmpeg/yt-dlp/deno) — setup.ps1 downloads them.
+tools/
+# Electron app: dependencies restored by npm ci, dist/ recreated by builds.
+desktop/node_modules/
+desktop/dist/
+# Playwright run artifacts (screenshots, traces, reports).
+desktop/test-results/
+desktop/playwright-report/
 # Transcription outputs land next to their source files.
 *.txt
 *.srt

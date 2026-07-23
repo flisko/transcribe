@@ -1,0 +1,43 @@
+# Packaging config (C9). Builds run from desktop/ (npm run dist / CI), so this
+# directory IS the app directory — electron-builder picks it up as the project
+# root; models/ and tools/ live outside it and can never leak into a build.
+# CI overrides version + updateRepo via -c.extraMetadata.* (see release.yml);
+# local builds keep 0.0.0-dev and no updateRepo, which turns the update
+# banner check off.
+appId: com.flisko.transcribe
+productName: Transcribe
+
+directories:
+  output: dist
+  buildResources: build
+
+# Runtime files only — tests, scripts, and build resources stay out of asar.
+files:
+  - main.js
+  - preload.js
+  - main/**/*
+  - shared/**/*
+  - renderer/**/*
+  - package.json
+
+mac:
+  target: zip
+  identity: null # ad-hoc; first launch needs Gatekeeper bypass, same as 2.0
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  minimumSystemVersion: '13.0'
+  # Same file associations as the 2.0 Info.plist: lets users drop audio/video
+  # on the Dock icon (Viewer, never the default handler).
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Audio or Video
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.movie
+          - public.audio
+          - public.audio-visual-content
+
+win:
+  target: zip
+  icon: build/icon.ico
