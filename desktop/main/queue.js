@@ -207,6 +207,18 @@ function createQueue(opts) {
           for (const c of children) engine.killTree(c);
         }
       },
+      // Quit path: kill AND await each child's death (win: taskkill close;
+      // mac: process-group TERM→KILL) so the job dir can be removed without
+      // racing a still-open audio.wav that Windows refuses to unlink.
+      async cancelAndWait(timeoutMs) {
+        if (promise && typeof promise.cancel === 'function') promise.cancel();
+        if (typeof engine.killTreeAndWait === 'function') {
+          await Promise.all(children.map((c) =>
+            Promise.resolve(engine.killTreeAndWait(c, timeoutMs)).catch(() => { })));
+        } else if (typeof engine.killTree === 'function') {
+          for (const c of children) engine.killTree(c);
+        }
+      },
     };
   }
 
@@ -292,7 +304,12 @@ function createQueue(opts) {
   }
 
   function flash(id) {
+    // Broadcast the flash immediately (mirrors @Published flashID auto-render
+    // in AppModel.swift). Callers that don't otherwise end in changed() — the
+    // addLink dup path — depend on this; without it a duplicate add sets flashId
+    // but the renderer never sees a flash:true snapshot, only the later clear.
     flashId = id;
+    changed();
     later(delays.flash, () => {
       if (flashId === id) { flashId = null; changed(); }
     });
@@ -914,24 +931,32 @@ function createQueue(opts) {
 
   // MARK: Quit
 
-  function prepareForTermination() {
+  // Async: quitting mid-job must AWAIT every child's death before deleting the
+  // job dirs. On Windows taskkill is asynchronous and an open audio.wav can't be
+  // unlinked while ffmpeg/whisper hold it, so a synchronous rmrf here would fail
+  // silently and leak a multi-hundred-MB dir in %TEMP% every quit. main.js holds
+  // the quit until this resolves (with its own hard safety cap).
+  async function prepareForTermination(opts = {}) {
+    const waitMs = opts.waitMs;
+    const pending = [];
     for (const [id, handle] of jobs) {
       const it = byId(id);
       if (it && (it.state === 'transcribing' || it.state === 'preparing')) {
         removeFreshOutputs(it);
       }
-      // Downloads need no sweep here — the engine's staging cleanup removes
-      // its own partial files. cancel() delivers SIGTERM/taskkill to the whole
-      // tree synchronously; the engine escalates to SIGKILL on its own.
-      handle.cancel();
+      // Downloads need no sweep here — the engine's staging cleanup removes its
+      // own partial files. cancelAndWait TERM/taskkill's the whole tree and
+      // resolves once the children are actually gone.
+      pending.push(Promise.resolve(handle.cancelAndWait(waitMs)).catch(() => { }));
     }
     jobs.clear();
     for (const t of watchdogs.values()) clearTimeout(t);
     watchdogs.clear();
+    if (powerBlocking) { sys.stopPowerBlocker(); powerBlocking = false; }
+    await Promise.all(pending);
     for (const dir of jobDirs.values()) rmrf(dir);
     jobDirs.clear();
     rmrf(jobBase);
-    if (powerBlocking) { sys.stopPowerBlocker(); powerBlocking = false; }
   }
 
   // MARK: Snapshot (C4 — all text composed here)

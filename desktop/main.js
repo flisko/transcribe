@@ -20,8 +20,18 @@ const { createSettings } = require('./main/settings');
 const { checkForUpdate } = require('./main/update');
 const menus = require('./main/menus');
 const { registerIpc } = require('./main/ipc');
+const { filterStartupArgs, resolveOpenArg } = require('./main/startup-args');
 
 app.setName('Transcribe');
+
+// Windows toasts (queue-finished notifications, C5) are dropped silently unless
+// the process has an AppUserModelID. This app ships as a plain zip (no
+// installer, no Start Menu shortcut carrying an AUMID), so main must set one
+// itself, before any Notification is constructed. A stable reverse-DNS string —
+// the same appId electron-builder stamps (C9) — is used rather than
+// process.execPath so notification identity and taskbar grouping stay constant
+// even when the user moves the portable folder.
+if (process.platform === 'win32') app.setAppUserModelId('com.flisko.transcribe');
 
 const MEDIA_EXTS = [
   'mp4', 'mov', 'm4v', 'mkv', 'webm', 'avi', 'wmv', 'flv', 'mts', 'm2ts',
@@ -49,10 +59,13 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', (_event, argv) => {
+  app.on('second-instance', (_event, argv, workingDirectory) => {
     showMainWindow();
-    // Windows: files/URLs arrive as argv of the second launch.
-    enqueueOpens(argv.slice(1).filter((a) => typeof a === 'string' && !a.startsWith('-')));
+    // Windows: files/URLs arrive as argv of the second launch. Relative paths
+    // are relative to the SECOND process's cwd (workingDirectory), not ours.
+    const args = filterStartupArgs(argv, { packaged: true })
+      .map((a) => resolveOpenArg(a, workingDirectory));
+    enqueueOpens(args);
   });
 }
 
@@ -76,6 +89,27 @@ function deliverOpen(item) {
 
 // MARK: Windows
 
+// Navigation lock (backstop). A file/URL dropped on a page that doesn't
+// preventDefault it makes Chromium navigate the privileged renderer to that
+// target; because preload.js re-attaches on every load, the new page would
+// inherit the `invoke('cmd', …)` IPC bridge. Both windows only ever load their
+// own local file, so: block any navigation/redirect away from the current URL,
+// and never open child windows internally — https links go to the OS browser,
+// everything else is denied.
+function hardenWindow(win) {
+  const wc = win.webContents;
+  wc.on('will-navigate', (event, url) => {
+    if (url !== wc.getURL()) event.preventDefault();
+  });
+  wc.on('will-redirect', (event, url) => {
+    if (url !== wc.getURL()) event.preventDefault();
+  });
+  wc.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 560,
@@ -93,6 +127,7 @@ function createMainWindow() {
       nodeIntegration: false,
     },
   });
+  hardenWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.webContents.on('did-finish-load', sendState);
   mainWindow.on('close', (event) => {
@@ -133,6 +168,7 @@ function openSettingsWindow() {
       nodeIntegration: false,
     },
   });
+  hardenWindow(settingsWindow);
   settingsWindow.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
   settingsWindow.webContents.on('did-finish-load', sendState);
   settingsWindow.on('closed', () => { settingsWindow = null; });
@@ -172,8 +208,21 @@ app.on('before-quit', (event) => {
   quitApproved = true;
 });
 
-app.on('will-quit', () => {
-  if (queue) queue.prepareForTermination();
+// Cleanup must finish before the process exits: on Windows the job's audio.wav
+// can't be deleted while ffmpeg/whisper still hold it, so prepareForTermination
+// awaits each child's death (taskkill close / group-kill) before removing the
+// job dirs. will-quit is synchronous, so hold the quit, run the async cleanup,
+// then quit for real — with a hard safety cap so a stuck kill never hangs quit.
+let terminationDone = false;
+app.on('will-quit', (event) => {
+  if (terminationDone || !queue) return;
+  event.preventDefault();
+  const cleanup = Promise.resolve(queue.prepareForTermination({ waitMs: 3000 })).catch(() => { });
+  const safety = new Promise((resolve) => { setTimeout(resolve, 5000).unref(); });
+  Promise.race([cleanup, safety]).finally(() => {
+    terminationDone = true;
+    app.quit();
+  });
 });
 
 app.on('window-all-closed', () => {
@@ -307,6 +356,15 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => queue.handleWake());
 
   queue.probeDeps();
+  // Windows: files/URLs from 'Open with' or drag-onto-exe when the app was NOT
+  // already running arrive only in this first process's argv — there is no
+  // open-file event as on mac. Resolve relative paths against our own cwd (the
+  // launching shell's cwd for a first launch) and feed the same enqueue path.
+  if (process.platform === 'win32') {
+    const args = filterStartupArgs(process.argv, { packaged: app.isPackaged })
+      .map((a) => resolveOpenArg(a, process.cwd()));
+    enqueueOpens(args);
+  }
   for (const item of pendingOpens.splice(0)) deliverOpen(item);
   startUpdateCheck();
 });

@@ -320,6 +320,39 @@ test('duplicate add flashes the existing row while unfinished, re-adds when done
   assert.strictEqual(h.items().length, 2, 'finished duplicate re-adds');
 });
 
+test('duplicate LINK add flashes the existing row via a synchronous broadcast, cleared ~400ms later', async (t) => {
+  const h = harness(t);
+  const ok = h.queue.addLink('https://example.com/watch?v=dup');
+  assert.strictEqual(ok, true);
+  const id = h.items()[0].id;
+  assert.strictEqual(h.items()[0].state, 'lookingUp', 'link is active (unfinished) so a re-add flashes');
+
+  // Spy on the broadcast seam the queue pushes snapshots through to the renderer.
+  const broadcasts = [];
+  h.queue.onChange((snap) => broadcasts.push(snap));
+
+  // Re-adding the same still-active link must NOT re-add, and must flash the
+  // existing row. Regression: the old flash() only scheduled the 400ms CLEAR,
+  // never broadcasting flash:true, so the renderer never saw the flash.
+  const before = broadcasts.length;
+  const ok2 = h.queue.addLink('https://example.com/watch?v=dup');
+  assert.strictEqual(ok2, true);
+  assert.strictEqual(h.items().length, 1, 'active duplicate not re-added');
+
+  const flashOn = broadcasts.slice(before).filter(
+    (s) => s.items.length === 1 && s.items[0].id === id && s.items[0].flash === true);
+  assert.ok(flashOn.length >= 1, 'duplicate link add broadcasts flash:true synchronously');
+  assert.strictEqual(h.queue.snapshot().items[0].flash, true);
+
+  // ~400ms later (delays.flash) the flash clears with its own broadcast.
+  const beforeClear = broadcasts.length;
+  await sleep(TEST_DELAYS.flash + 30);
+  const flashOff = broadcasts.slice(beforeClear).filter(
+    (s) => s.items[0] && s.items[0].flash === false);
+  assert.ok(flashOff.length >= 1, 'flash clears with a broadcast after the delay');
+  assert.strictEqual(h.items()[0].flash, false, 'flash cleared (400ms pin preserved)');
+});
+
 test('missing-file actions: fileGoneNote + Finder fallback to containing folder (test log)', async (t) => {
   const h = harness(t);
   const f = h.mkFile('gone.mp4');

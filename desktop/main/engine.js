@@ -189,6 +189,79 @@ function probeDeps(opts) {
   };
 }
 
+// ------------------------------------------------------ win path codepage safety
+//
+// WHY (finding, major): whisper-cli.exe has no wide-char argv handling. On
+// Windows, Node's UTF-16 argv is down-converted to the system ANSI codepage
+// before it reaches whisper's narrow main(); any character outside that
+// codepage (Croatian č/š/ž on a cp1250 box, CJK, emoji straight out of a yt-dlp
+// title) turns into '?' — an illegal NTFS filename char — or a best-fit
+// substitute. whisper then writes the transcript to the wrong path, or fails to
+// create it, the fresh-mtime success check misses, and the run surfaces the
+// misleading "is the language 'hr' valid?" error. This breaks the PRIMARY
+// Croatian use case, whose titles are full of diacritics.
+//
+// FIX (win32): point whisper's -of at an ASCII-only base ('out') inside the
+// app-controlled job workDir, then move the produced out.txt/out.srt to the
+// real — possibly Unicode — destination stem with Node's fs, which IS
+// Unicode-safe (libuv calls the wide Win32 APIs). darwin is untouched: -of
+// points straight at the destination stem and nothing is renamed.
+//
+// RESIDUAL (documented; common case handled): the model path (-m) and wav path
+// (-f) are still handed to whisper verbatim. Their leaves are ASCII ('out',
+// 'audio.wav', 'ggml-*.bin'), so they only carry non-codepage bytes when their
+// *directory* does — i.e. when the Windows user-profile name itself is
+// non-ASCII (workDir lives under %TEMP%, the model under the app folder). That
+// is the harder case the finding flags; the overwhelmingly common
+// ASCII-username install is fully fixed by the -of rerouting above.
+//
+// Pure + platform-injectable so the mapping is unit-testable from a mac (uses
+// the injected platform's path flavor, which equals the ambient one on the real
+// OS, so production behavior is byte-identical to the previous inline logic).
+function whisperOutputPlan({ platform, input, workDir }) {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  // Stem from the FILENAME only: a dotted parent folder must not eat the name;
+  // dotfiles keep their full name (same rules as bin/transcribe).
+  const fname = p.basename(input);
+  const dot = fname.lastIndexOf('.');
+  const stem = dot > 0 ? fname.slice(0, dot) : fname;
+  const base = p.join(p.dirname(input), stem);
+  const txt = `${base}.txt`;
+  const srt = `${base}.srt`;
+  if (platform !== 'win32') {
+    return { ofBase: base, txt, srt, producedTxt: txt, producedSrt: srt, renames: [] };
+  }
+  const ofBase = p.join(workDir, 'out');
+  const producedTxt = `${ofBase}.txt`;
+  const producedSrt = `${ofBase}.srt`;
+  return {
+    ofBase,
+    txt,
+    srt,
+    producedTxt,
+    producedSrt,
+    renames: [
+      { from: producedTxt, to: txt },
+      { from: producedSrt, to: srt },
+    ],
+  };
+}
+
+// EXDEV-safe move: the ASCII workDir (under %TEMP%) and the destination folder
+// can live on different volumes on Windows, where rename() throws EXDEV.
+function moveOutput(from, to) {
+  try {
+    fs.renameSync(from, to);
+  } catch (e) {
+    if (e && e.code === 'EXDEV') {
+      fs.copyFileSync(from, to);
+      fs.rmSync(from, { force: true });
+    } else {
+      throw e;
+    }
+  }
+}
+
 // ---------------------------------------------------------------- transcribe
 
 // Same aliases as bin/transcribe so terminal-style selectors keep working.
@@ -238,14 +311,12 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
     throw transcribeError(3, `Model not found at ${modelFile}. Please run setup.`, modelSel, fileName);
   }
 
-  // Stem from the FILENAME only: a dotted parent folder must not eat the name;
-  // dotfiles keep their full name (same rules as bin/transcribe).
-  const fname = path.basename(input);
-  const dot = fname.lastIndexOf('.');
-  const stem = dot > 0 ? fname.slice(0, dot) : fname;
-  const base = path.join(path.dirname(input), stem);
-  const txt = `${base}.txt`;
-  const srt = `${base}.srt`;
+  // -of / rename plan. win32: whisper writes ASCII out.* into workDir, then we
+  // move them to the real (possibly-Unicode) destination — see
+  // whisperOutputPlan for why. darwin: whisper writes straight to the dest and
+  // renames is empty (byte-identical to the prior inline logic).
+  const plan = whisperOutputPlan({ platform: process.platform, input, workDir });
+  const { ofBase, txt, srt, producedTxt, producedSrt, renames } = plan;
   const wav = path.join(workDir, 'audio.wav');
 
   const progress = progressReporter(onProgress);
@@ -278,9 +349,14 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
   progress(1);
 
   // A transcript left over from an earlier run must not be mistaken for this
-  // run's result — whisper can fail while exiting 0.
+  // run's result — whisper can fail while exiting 0. Clear the destination (on
+  // failure nothing stale is left next to the source) and, on win32, the ASCII
+  // workDir targets whisper writes to (producedTxt/producedSrt === txt/srt on
+  // darwin, so those two are harmless no-ops there).
   fs.rmSync(txt, { force: true });
   fs.rmSync(srt, { force: true });
+  fs.rmSync(producedTxt, { force: true });
+  fs.rmSync(producedSrt, { force: true });
 
   // Whisper stderr goes to a per-job log kept on failure (path lands in
   // error.details), deleted on success/cancel — mirrors bin/transcribe.
@@ -292,7 +368,7 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
   try {
     if (job.canceled) throw canceledError();
     const child = spawnTool(whisperBin, [
-      '-m', modelFile, '-f', wav, '-l', langCode, '-otxt', '-osrt', '-of', base, '-pp',
+      '-m', modelFile, '-f', wav, '-l', langCode, '-otxt', '-osrt', '-of', ofBase, '-pp',
     ]);
     child.__job = job;
     if (onChild) onChild(child);
@@ -314,15 +390,16 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
     await new Promise((resolve) => logStream.end(resolve));
 
     if (job.canceled || child.__killRequested) {
-      // Partial outputs must not be mistaken for a finished transcript.
-      fs.rmSync(txt, { force: true });
-      fs.rmSync(srt, { force: true });
+      // Partial outputs must not be mistaken for a finished transcript (these
+      // are the paths whisper actually wrote — workDir/out.* on win32).
+      fs.rmSync(producedTxt, { force: true });
+      fs.rmSync(producedSrt, { force: true });
       throw canceledError();
     }
 
     let fresh = false;
     try {
-      const ts = fs.statSync(txt);
+      const ts = fs.statSync(producedTxt);
       fresh = ts.isFile() && ts.mtimeMs >= whisperStart - 2000;
     } catch (_) {}
     if (code !== 0 || signal || !fresh) {
@@ -330,6 +407,12 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
       const stderrText = `${wErr.value}\nSKIP (transcription failed — is the language '${langCode}' valid?): ${fileName}`;
       throw transcribeError(1, stderrText, modelSel, fileName,
         `${lastLines(wErr.value, 15)}\nDetails: ${logFile}`);
+    }
+    // win32: move the ASCII workDir outputs to the real destination with
+    // Node's Unicode-safe fs. darwin: renames is empty — whisper already wrote
+    // straight to txt/srt.
+    for (const r of renames) {
+      if (fs.existsSync(r.from)) moveOutput(r.from, r.to);
     }
     progress(100);
     return { txt, srt };
@@ -666,5 +749,7 @@ module.exports = {
     filesIdentical,
     lineSplitter,
     normalizeLang,
+    whisperOutputPlan,
+    moveOutput,
   },
 };

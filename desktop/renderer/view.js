@@ -114,17 +114,24 @@
   }
 
   // ---------- queue rows ----------
-  const rowEls = new Map(); // id -> element
+  const rowEls = new Map();     // id -> element
+  const knownIds = new Set();   // ids rendered in a previous snapshot (scroll gate)
 
   function renderRows(items) {
     const queue = $('queue');
     const seen = new Set();
+    // Parity with AppModel.swift (scrollTarget set on every fresh add): scroll a
+    // brand-new row into view so a file/link added to a full queue isn't lost
+    // below the fold. The initial population (empty knownIds) never scrolls.
+    const firstPaint = knownIds.size === 0;
+    let scrollTargetEl = null;
     items.forEach((item) => {
       seen.add(item.id);
       let el = rowEls.get(item.id);
       if (!el) {
         el = createRow(item.id);
         rowEls.set(item.id, el);
+        if (!firstPaint && !knownIds.has(item.id)) scrollTargetEl = el;
       }
       updateRow(el, item);
     });
@@ -138,6 +145,10 @@
       const el = rowEls.get(item.id);
       if (queue.children[i] !== el) queue.insertBefore(el, queue.children[i] || null);
     });
+    knownIds.clear();
+    for (const id of seen) knownIds.add(id);
+    // Scroll after the DOM is settled (the row is now inserted/positioned).
+    if (scrollTargetEl) scrollTargetEl.scrollIntoView({ block: 'nearest' });
   }
 
   function setSelected(id) {
@@ -210,6 +221,7 @@
     const mid = el.querySelector('.mid');
     let bar = mid.querySelector('.bar');
     if (!item.showProgressBar) { if (bar) bar.remove(); return; }
+    const created = !bar;
     if (!bar) {
       bar = document.createElement('div');
       bar.className = 'bar';
@@ -217,8 +229,29 @@
       mid.appendChild(bar);
     }
     const indet = !!item.indeterminate;
+    const wasIndet = bar.classList.contains('indet');
     bar.classList.toggle('indet', indet);
-    bar.firstChild.style.width = indet ? '' : Math.max(0, Math.min(100, item.progressPct || 0)) + '%';
+    const fill = bar.firstChild;
+    if (indet) {
+      fill.style.width = '';
+      return;
+    }
+    const width = Math.max(0, Math.min(100, item.progressPct || 0)) + '%';
+    // Leaving the indeterminate segment (which sits at a fixed 40% width from
+    // CSS): the .25s width transition would animate 40%->real%, visibly shrinking
+    // the bar while the label already reads "Transcribing — 1%". Suppress the
+    // transition for this one handoff frame so the determinate bar starts at the
+    // true percentage. (Under reduce-motion the stylesheet already sets
+    // transition:none, so restoring to '' keeps it none — no regression.)
+    if (wasIndet || created) {
+      const prev = fill.style.transition;
+      fill.style.transition = 'none';
+      fill.style.width = width;
+      void fill.offsetWidth;          // force reflow: commit width with no transition
+      fill.style.transition = prev;   // '' -> back to the stylesheet's .25s transition
+    } else {
+      fill.style.width = width;
+    }
   }
 
   function updateTrail(el, item) {

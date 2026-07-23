@@ -39,6 +39,12 @@ $FfmpegUrl  = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
 $YtDlpUrl   = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
 $DenoUrl    = 'https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip'
 
+# whisper-cli.exe dynamically links the Microsoft Visual C++ 2015-2022
+# runtime (MSVCP140.dll, VCRUNTIME140*.dll, VCOMP140.dll) — DLLs that ship
+# with neither Windows nor the whisper zip. Without them the exe can't even
+# start. Permalink to the official x64 redistributable installer:
+$VCRedistUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+
 # Smallest believable size per model — anything under this is a truncated
 # download left by an interrupted run, not a usable model.
 # Keep in sync with the app's model catalog (desktop/shared/catalog.js).
@@ -151,6 +157,59 @@ function Install-ZipTool {
   return (Test-Path -LiteralPath (Join-Path $DestDir $ExeName))
 }
 
+# whisper-cli.exe links the Microsoft Visual C++ runtime, which is not part
+# of Windows. Smoke-run it (with --help) to see whether its DLLs load: a
+# clean PC without the runtime exits immediately with STATUS_DLL_NOT_FOUND
+# (0xC0000135), and a process that can't start at all throws. Any other exit
+# (even a non-zero "usage" code) means the binary loaded — that is what we
+# test. Returns $true when whisper loaded, $false when the runtime is missing.
+# Overrides (validation runs on a Mac, where whisper-cli.exe can't execute):
+#   TRANSCRIBE_SETUP_WHISPER_SMOKE = program to run instead of whisper-cli.exe
+#   TRANSCRIBE_SETUP_DLL_FAIL_CODE = extra exit code to treat as the DLL
+#     failure (a Unix exit code can't be the real 0xC0000135, so the stub
+#     uses a small sentinel instead).
+function Test-WhisperDllLoad([string]$exe) {
+  $probe = $exe
+  if ($env:TRANSCRIBE_SETUP_WHISPER_SMOKE) { $probe = $env:TRANSCRIBE_SETUP_WHISPER_SMOKE }
+  try {
+    & $probe '--help' *> $null
+  } catch {
+    return $false
+  }
+  $code = $LASTEXITCODE
+  if ($code -eq -1073741515) { return $false }   # 0xC0000135, signed int32
+  if ($code -eq 3221225781)  { return $false }   # 0xC0000135, unsigned
+  if ($env:TRANSCRIBE_SETUP_DLL_FAIL_CODE -and
+      "$code" -eq "$env:TRANSCRIBE_SETUP_DLL_FAIL_CODE") { return $false }
+  return $true
+}
+
+# Downloads (resumable) and silently installs the Microsoft Visual C++
+# 2015-2022 x64 redistributable. Installer exit codes: 0 = installed,
+# 3010 = installed but a reboot is needed, 1638 = a same-or-newer version is
+# already present — all three mean the runtime is now available, so all three
+# are success. Returns $true on any of them. Override for validation:
+#   TRANSCRIBE_SETUP_VCREDIST_RUN = program to invoke with the install
+#     switches instead of the downloaded exe.
+function Install-VCRedist {
+  New-Item -ItemType Directory -Force -Path $StageDir | Out-Null
+  $exe = Join-Path $StageDir 'vc_redist.x64.exe'
+  if (-not (Invoke-CurlDownload (Resolve-Url $VCRedistUrl) $exe)) {
+    return $false
+  }
+  $runner = $exe
+  if ($env:TRANSCRIBE_SETUP_VCREDIST_RUN) { $runner = $env:TRANSCRIBE_SETUP_VCREDIST_RUN }
+  try {
+    & $runner '/install' '/quiet' '/norestart'
+  } catch {
+    Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+    return $false
+  }
+  $code = $LASTEXITCODE
+  Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+  return ($code -eq 0 -or $code -eq 3010 -or $code -eq 1638)
+}
+
 Write-Host "== Transcribe setup =="
 Write-Host "This prepares your PC for Transcribe. Each step below says what it's"
 Write-Host "doing. Everything is safe to run again later."
@@ -171,7 +230,8 @@ $installFailed = $false
 
 # 2. whisper.cpp (the speech-recognition engine)
 $WhisperDir = Join-Path $ToolsDir 'whisper'
-if (Test-Path -LiteralPath (Join-Path $WhisperDir 'whisper-cli.exe')) {
+$WhisperExe = Join-Path $WhisperDir 'whisper-cli.exe'
+if (Test-Path -LiteralPath $WhisperExe) {
   Write-Host "Speech engine (whisper.cpp) already installed — skipping."
 } else {
   Write-Host "Downloading the speech engine (whisper.cpp) — this can take a few minutes…"
@@ -184,6 +244,38 @@ if (Test-Path -LiteralPath (Join-Path $WhisperDir 'whisper-cli.exe')) {
     Write-Host "again later to retry. The rest of setup continues below."
     Write-Host ""
     $installFailed = $true
+  }
+}
+
+# 2b. whisper needs the Microsoft Visual C++ runtime (see $VCRedistUrl). It is
+#     NOT part of Windows and NOT in the whisper zip, so on a clean PC the exe
+#     can't even start — every later transcription would then fail with a
+#     misleading error. Smoke-run whisper; if it can't load its DLLs, install
+#     the redistributable and try once more. This runs on every setup and is
+#     idempotent: a PC that already has the runtime passes the smoke test and
+#     does nothing.
+if (Test-Path -LiteralPath $WhisperExe) {
+  if (-not (Test-WhisperDllLoad $WhisperExe)) {
+    Write-Host "The speech engine needs the Microsoft Visual C++ runtime — installing it…"
+    if (Install-VCRedist) {
+      if (Test-WhisperDllLoad $WhisperExe) {
+        Write-Host "Microsoft Visual C++ runtime installed — the speech engine is ready."
+      } else {
+        Write-Host ""
+        Write-Host "NOTE: The speech engine still can't start after installing the Microsoft"
+        Write-Host "Visual C++ runtime. Restart your PC and run this file again; if it keeps"
+        Write-Host "failing, install ""Visual C++ Redistributable (x64)"" from Microsoft, then retry."
+        Write-Host ""
+        $installFailed = $true
+      }
+    } else {
+      Write-Host ""
+      Write-Host "NOTE: Couldn't install the Microsoft Visual C++ runtime just now (no"
+      Write-Host "internet, or a server hiccup). The speech engine needs it — run this file"
+      Write-Host "again later to retry."
+      Write-Host ""
+      $installFailed = $true
+    }
   }
 }
 
