@@ -77,7 +77,8 @@ test('findTool mac: found via injected PATH; whisper-cpp fallback order', { skip
   fs.rmSync(empty, { recursive: true, force: true });
 });
 
-test('findTool mac: non-executable candidates are skipped', () => {
+test('findTool mac: non-executable candidates are skipped', { skip: process.platform === 'win32' &&
+  'mac whichSync path is unsimulable on Windows: PATH.split(":") shatters the drive-letter colon, and fs.accessSync(X_OK) ignores the POSIX execute bit so a 0o644 file still reads as executable (findTool takes the win32 isFile() branch in production — this asserts the mac-only branch)' }, () => {
   const bin = tmpdir();
   fs.writeFileSync(path.join(bin, 'yt-dlp'), '', { mode: 0o644 });
   const opts = { platform: 'darwin', env: { PATH: bin }, extraPathDirs: [] };

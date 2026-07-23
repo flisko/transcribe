@@ -207,13 +207,24 @@ function probeDeps(opts) {
 // Unicode-safe (libuv calls the wide Win32 APIs). darwin is untouched: -of
 // points straight at the destination stem and nothing is renamed.
 //
-// RESIDUAL (documented; common case handled): the model path (-m) and wav path
-// (-f) are still handed to whisper verbatim. Their leaves are ASCII ('out',
-// 'audio.wav', 'ggml-*.bin'), so they only carry non-codepage bytes when their
-// *directory* does — i.e. when the Windows user-profile name itself is
-// non-ASCII (workDir lives under %TEMP%, the model under the app folder). That
-// is the harder case the finding flags; the overwhelmingly common
-// ASCII-username install is fully fixed by the -of rerouting above.
+// RESIDUAL (known, unfixed — worse than a stray '?'): the model path (-m) and
+// wav path (-f) are still handed to whisper verbatim. Their leaves are ASCII
+// ('audio.wav', 'ggml-*.bin') and -of's leaf is ASCII 'out', so the ONLY way a
+// non-ASCII byte still reaches whisper is through their *directory* — i.e. a
+// non-ASCII Windows user-profile name (workDir lives under %TEMP% =
+// C:\Users\<name>\AppData\Local\Temp; the model under the app folder, often
+// under the profile too). MEASURED on real Windows (ACP cp1250): a non-ASCII
+// username breaks EVERY transcription, and it is NOT limited to chars outside
+// the codepage — even cp1250-REPRESENTABLE diacritics (C:\Users\Žiga\…) make
+// whisper-cli crash outright (STATUS_STACK_BUFFER_OVERRUN 0xC0000409), while
+// emoji/CJK degrade to "input file not found". So the overwhelmingly common
+// ASCII-username install is fully fixed by the -of rerouting above, but any
+// non-ASCII username (common in the primary HR/SI audience) is a hard failure.
+// A proper fix stages the wav/model under an ASCII base independent of the
+// profile (e.g. a %ProgramData% job dir + a same-volume hardlink of the model),
+// win32-guarded — deferred because it needs multi-user + cross-volume + fallback
+// handling and its own tests. GetShortPathNameW (8.3) is not usable: no Node
+// binding without a native addon (the codebase is pure JS, no bundler).
 //
 // Pure + platform-injectable so the mapping is unit-testable from a mac (uses
 // the injected platform's path flavor, which equals the ambient one on the real
@@ -353,10 +364,15 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
   // failure nothing stale is left next to the source) and, on win32, the ASCII
   // workDir targets whisper writes to (producedTxt/producedSrt === txt/srt on
   // darwin, so those two are harmless no-ops there).
-  fs.rmSync(txt, { force: true });
-  fs.rmSync(srt, { force: true });
-  fs.rmSync(producedTxt, { force: true });
-  fs.rmSync(producedSrt, { force: true });
+  // force:true suppresses ENOENT but NOT EPERM/EBUSY: on Windows a prior
+  // transcript the user still has open in Word/Excel/VLC holds an exclusive
+  // lock, so deleting it throws — which, sitting before the try below, would
+  // abort the whole run before whisper even starts (macOS unlinks open files
+  // fine). Tolerate a locked destination here; a truly stuck lock resurfaces at
+  // moveOutput, but only after the transcription work is actually done.
+  for (const stale of [txt, srt, producedTxt, producedSrt]) {
+    try { fs.rmSync(stale, { force: true }); } catch (_) { /* locked prior output — deal with it at move time */ }
+  }
 
   // Whisper stderr goes to a per-job log kept on failure (path lands in
   // error.details), deleted on success/cancel — mirrors bin/transcribe.
@@ -686,7 +702,13 @@ function killTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   if (IS_WIN) {
     try {
-      spawn('taskkill', taskkillArgs(child.pid), { shell: false, windowsHide: true, stdio: 'ignore' });
+      const tk = spawn('taskkill', taskkillArgs(child.pid), { shell: false, windowsHide: true, stdio: 'ignore' });
+      // A failed spawn (taskkill blocked by AV/EDR, System32 off the child PATH,
+      // an IFEO hijack) is delivered ASYNCHRONOUSLY as an 'error' event the
+      // try/catch can't see; with no listener Node re-throws it as an uncaught
+      // exception and the whole main process dies the instant the user clicks
+      // Cancel. Swallow it — same guard the killTreeAndWait sibling already has.
+      tk.on('error', () => {});
     } catch (_) {}
     return;
   }

@@ -189,7 +189,13 @@ function createQueue(opts) {
   }
 
   function rmrf(p) {
-    try { fs.rmSync(p, { recursive: true, force: true }); } catch { }
+    // maxRetries/retryDelay matters on Windows: cancel()/quit fire taskkill
+    // ASYNCHRONOUSLY, so a just-killed whisper/ffmpeg can still hold
+    // workDir/audio.wav for a beat when this runs — a plain rmSync would hit
+    // EPERM/EBUSY on the locked wav, abort, and leak the job dir under %TEMP%.
+    // Node retries the unlink on those codes; a no-op cushion on macOS, where
+    // SIGKILL releases handles synchronously. (Mirrors engine.removeDirWithRetry.)
+    try { fs.rmSync(p, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 }); } catch { }
   }
 
   // One engine run as a cancelable handle. The real engine surfaces children

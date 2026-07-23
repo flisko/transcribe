@@ -210,6 +210,29 @@ function Install-VCRedist {
   return ($code -eq 0 -or $code -eq 3010 -or $code -eq 1638)
 }
 
+# Make tools\win\whisper self-contained: copy the four MSVC runtime DLLs
+# whisper-cli.exe (and the ggml-cpu backends it loads) link — MSVCP140.dll,
+# VCRUNTIME140.dll, VCRUNTIME140_1.dll, and VCOMP140.dll (the OpenMP runtime the
+# ggml-cpu-*.dll backends pull in) — from System32 next to the exe. The Windows
+# loader searches an exe's own directory before System32, so once these sit here
+# the whole portable folder runs on a PC that never had the VC++ redist — no
+# elevation, no network. That is exactly the "copy the folder to another
+# computer" flow the app promises (README). Only called after the smoke test
+# PASSED, so these System32 copies are proven compatible with this whisper build.
+# Idempotent (skips a DLL already beside the exe); silent when a source is absent
+# (e.g. the Mac validation host has no System32).
+function Copy-WhisperRuntimeDlls([string]$whisperDir) {
+  if (-not $env:SystemRoot) { return }
+  foreach ($dll in @('MSVCP140.dll', 'VCRUNTIME140.dll', 'VCRUNTIME140_1.dll', 'VCOMP140.dll')) {
+    $dst = Join-Path $whisperDir $dll
+    if (Test-Path -LiteralPath $dst) { continue }
+    $src = Join-Path $env:SystemRoot (Join-Path 'System32' $dll)
+    if (Test-Path -LiteralPath $src) {
+      try { Copy-Item -LiteralPath $src -Destination $dst -Force } catch { }
+    }
+  }
+}
+
 Write-Host "== Transcribe setup =="
 Write-Host "This prepares your PC for Transcribe. Each step below says what it's"
 Write-Host "doing. Everything is safe to run again later."
@@ -255,10 +278,12 @@ if (Test-Path -LiteralPath $WhisperExe) {
 #     idempotent: a PC that already has the runtime passes the smoke test and
 #     does nothing.
 if (Test-Path -LiteralPath $WhisperExe) {
-  if (-not (Test-WhisperDllLoad $WhisperExe)) {
+  $whisperLoads = Test-WhisperDllLoad $WhisperExe
+  if (-not $whisperLoads) {
     Write-Host "The speech engine needs the Microsoft Visual C++ runtime — installing it…"
     if (Install-VCRedist) {
       if (Test-WhisperDllLoad $WhisperExe) {
+        $whisperLoads = $true
         Write-Host "Microsoft Visual C++ runtime installed — the speech engine is ready."
       } else {
         Write-Host ""
@@ -270,13 +295,18 @@ if (Test-Path -LiteralPath $WhisperExe) {
       }
     } else {
       Write-Host ""
-      Write-Host "NOTE: Couldn't install the Microsoft Visual C++ runtime just now (no"
-      Write-Host "internet, or a server hiccup). The speech engine needs it — run this file"
-      Write-Host "again later to retry."
+      Write-Host "NOTE: Couldn't install the Microsoft Visual C++ runtime just now. This is the"
+      Write-Host "one setup step that needs administrator rights — approve the Windows prompt,"
+      Write-Host "or right-click ""Transcribe Setup"" and choose ""Run as administrator"" (and be"
+      Write-Host "online). Then run it again. If you can't get admin rights, ask your IT admin."
       Write-Host ""
       $installFailed = $true
     }
   }
+  # Once whisper can load, bundle the runtime DLLs beside it so this portable
+  # folder no longer depends on the PC's VC++ redist (see the function note) —
+  # copy it to another machine and it just runs.
+  if ($whisperLoads) { Copy-WhisperRuntimeDlls $WhisperDir }
 }
 
 # 3. ffmpeg (reads the sound out of video files)

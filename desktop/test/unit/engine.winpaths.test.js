@@ -85,8 +85,11 @@ test('win32: emoji title never reaches whisper argv', () => {
 // Documents the residual: a non-ASCII Windows *username* leaks into workDir (and
 // the model path), so ofBase's DIRECTORY is still non-ASCII — but the -of LEAF
 // is always ASCII 'out', so the title-derived corruption (the guaranteed-broken
-// common case) is gone regardless. The finding flags the username case as the
-// harder residual; this asserts the boundary of the fix.
+// common case) is gone regardless. This asserts the boundary of the fix (the
+// pure mapping); it does NOT assert the run succeeds. MEASURED on real Windows
+// (ACP cp1250): with the wav/model under a non-ASCII-username directory whisper
+// still fails — cp1250-representable diacritics (C:\Users\Žiga\…) crash it
+// (0xC0000409), emoji/CJK give "input file not found". See engine.js RESIDUAL.
 test('win32: non-ASCII username is the documented residual (leaf still ASCII "out")', () => {
   const input = 'C:\\Users\\Žiga\\Downloads\\Čćžšđ [id].mp4';
   const workDir = 'C:\\Users\\Žiga\\AppData\\Local\\Temp\\job';
