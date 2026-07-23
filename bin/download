@@ -1,0 +1,235 @@
+#!/bin/bash
+# Link downloader: fetches a single video (or just its audio, which is much
+# faster) with yt-dlp so it can be transcribed like any local file.
+#
+#   download info URL
+#       One stdout line:  TITLE<tab>title<tab>duration_s<tab>is_live<tab>playlist_count
+#       ("NA" where a field is unknown.)
+#   download get video|audio URL DESTDIR
+#       Downloads into DESTDIR; the LAST stdout line is:  FILE<tab>/absolute/path
+#
+# Progress: like bin/transcribe — if TRANSCRIBE_PROGRESS_FILE is set, writes
+# PCT<tab>1<tab>1<tab>NAME to it atomically as the download proceeds. yt-dlp's
+# stderr passes straight through (the app pattern-matches it for error causes).
+#
+# Exit codes: 0 = success · 1 = lookup/download failed · 2 = usage ·
+#             3 = a required tool (yt-dlp/ffmpeg) is missing (see stderr).
+set -uo pipefail
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+TAB="$(printf '\t')"
+PROGRESS_FILE="${TRANSCRIBE_PROGRESS_FILE:-}"
+CHILD_PID=""
+DL_TMP=""
+WORK_TMP=""
+
+usage() {
+  echo "Usage: download info URL" >&2
+  echo "       download get video|audio URL DESTDIR" >&2
+  exit 2
+}
+
+require_tools() {   # $1 = subcommand
+  if ! command -v yt-dlp >/dev/null 2>&1; then
+    echo "yt-dlp not found. Please run setup.command first." >&2
+    exit 3
+  fi
+  # get also needs ffmpeg: video downloads merge streams, audio extracts.
+  if [ "$1" = "get" ] && ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "ffmpeg not found. Please run setup.command first." >&2
+    exit 3
+  fi
+}
+
+cleanup() {
+  [ -n "$WORK_TMP" ] && rm -rf "$WORK_TMP"
+  [ -n "$DL_TMP" ] && rm -rf "$DL_TMP"
+}
+trap cleanup EXIT
+
+# Cancelling must stop yt-dlp (and any ffmpeg it spawned for merging) and
+# remove the staging dir so no .part files are left anywhere the user looks.
+on_signal() {
+  trap '' TERM INT
+  if [ -n "$CHILD_PID" ]; then
+    kill -TERM "$CHILD_PID" 2>/dev/null
+    pkill -TERM -P "$CHILD_PID" 2>/dev/null
+    wait "$CHILD_PID" 2>/dev/null
+  fi
+  cleanup
+  exit 130
+}
+trap on_signal TERM INT
+
+# Atomic progress write, same protocol and staging-name insurance as bin/transcribe.
+write_progress() {   # $1 = percent 0-100, $2 = display name
+  [ -n "$PROGRESS_FILE" ] || return 0
+  printf '%s\t1\t1\t%s\n' "$1" "$2" > "$PROGRESS_FILE.$$.tmp" 2>/dev/null \
+    && mv -f "$PROGRESS_FILE.$$.tmp" "$PROGRESS_FILE" 2>/dev/null || true
+}
+
+# Tab-separated protocol lines can't carry tabs/newlines inside a field.
+sanitize() { printf '%s' "$1" | tr '\t\n\r' '   '; }
+
+watchdog() {   # $1 = seconds, $2 = pid — a hung lookup must not stall the app
+  n=0
+  while [ "$n" -lt "$1" ]; do
+    sleep 1
+    kill -0 "$2" 2>/dev/null || return 0
+    n=$((n+1))
+  done
+  kill -TERM "$2" 2>/dev/null
+}
+
+cmd_info() {
+  [ "$#" -eq 1 ] || usage
+  url="$1"
+  require_tools info
+  out="$(mktemp -t transcribe_dl_info)"
+  # -I 1: a bare playlist/channel URL would otherwise be enumerated in full
+  # (--no-playlist only trims &list= off watch URLs). playlist_count still
+  # reports the real count, so the app can refuse multi-video links.
+  yt-dlp --no-update --no-playlist -I 1 --skip-download \
+    --print $'%(title)s\t%(duration)s\t%(is_live)s\t%(playlist_count)s' \
+    "$url" > "$out" &
+  CHILD_PID=$!
+  watchdog 30 "$CHILD_PID" &
+  wd=$!
+  wait "$CHILD_PID"; rc=$?
+  CHILD_PID=""
+  kill "$wd" 2>/dev/null
+  line="$(tail -n 1 "$out" 2>/dev/null)"
+  rm -f "$out"
+  if [ "$rc" -ne 0 ] || [ -z "$line" ]; then
+    [ "$rc" -eq 143 ] && echo "ERROR: The video lookup took too long and was stopped — check the internet connection." >&2
+    exit 1
+  fi
+  # Split from the RIGHT — a tab inside the title must not shift the fields.
+  count="${line##*"$TAB"}"; line="${line%"$TAB"*}"
+  live="${line##*"$TAB"}";  line="${line%"$TAB"*}"
+  dur="${line##*"$TAB"}";   title="$(sanitize "${line%"$TAB"*}")"
+  [ -n "$title" ] || title="NA"
+  [ -n "$dur" ]   || dur="NA"
+  [ -n "$live" ]  || live="NA"
+  [ -n "$count" ] || count="NA"
+  printf 'TITLE\t%s\t%s\t%s\t%s\n' "$title" "$dur" "$live" "$count"
+  exit 0
+}
+
+cmd_get() {
+  [ "$#" -eq 3 ] || usage
+  mode="$1"; url="$2"; destdir="$3"
+  case "$mode" in video|audio) ;; *) usage ;; esac
+  require_tools get
+  if ! mkdir -p "$destdir" 2>/dev/null; then
+    echo "ERROR: Can't create the download folder: $destdir" >&2
+    exit 1
+  fi
+  destdir="$(cd "$destdir" 2>/dev/null && pwd)" || {
+    echo "ERROR: Can't open the download folder: $destdir" >&2; exit 1; }
+
+  # Stage INSIDE the destination volume: half-downloaded files never appear in
+  # the user's folder, and the final mv stays a same-volume atomic rename.
+  DL_TMP="$destdir/.transcribe-dl.$$"
+  mkdir -p "$DL_TMP" 2>/dev/null || {
+    echo "ERROR: Can't write in the download folder: $destdir" >&2; exit 1; }
+  # The fifo lives in local TMPDIR — network volumes can refuse mkfifo.
+  WORK_TMP="$(mktemp -d)"
+  fifo="$WORK_TMP/ydl.out"
+  mkfifo "$fifo" || exit 1
+
+  write_progress 0 ""
+
+  # Flags per verified research: --print implies quiet, so --progress must
+  # re-enable ticks; templates need real tabs ($'…' quoting); -I 1 caps bare
+  # playlist URLs to one video; after_move:filepath (the last plain stdout
+  # line) is the only reliable final path across merge/extract/skip cases.
+  if [ "$mode" = "video" ]; then
+    yt-dlp --no-update --no-playlist -I 1 --newline --progress \
+      --progress-template $'download:PROGRESS\t%(progress._percent_str)s\t%(progress.eta)s\t%(progress.filename)s' \
+      --progress-template $'postprocess:PP\t%(progress.status)s\t%(progress.postprocessor)s' \
+      -f "bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" -S "res:1080" \
+      --merge-output-format mp4 \
+      -P "$DL_TMP" -o "%(title).120B [%(id)s].%(ext)s" \
+      --print after_move:filepath --no-simulate \
+      "$url" > "$fifo" &
+    CHILD_PID=$!
+    STAGES=2   # h264 + m4a merge = two sequential 0-100 downloads
+  else
+    yt-dlp --no-update --no-playlist -I 1 --newline --progress \
+      --progress-template $'download:PROGRESS\t%(progress._percent_str)s\t%(progress.eta)s\t%(progress.filename)s' \
+      -f "ba[ext=m4a]/ba/b" -x --audio-format m4a --audio-quality 0 \
+      -P "$DL_TMP" -o "%(title).120B [%(id)s].%(ext)s" \
+      --print after_move:filepath --no-simulate \
+      "$url" > "$fifo" &
+    CHILD_PID=$!
+    STAGES=1
+  fi
+
+  # Map the multi-stage ticks onto one 0-100: a changed filename means the
+  # next stage began; hold at 99 until the finished file is actually in place.
+  done_stages=0; prev_name=""; last_pct=0; FINAL_SRC=""
+  while IFS= read -r line; do
+    case "$line" in
+      "PROGRESS$TAB"*)
+        rest="${line#"PROGRESS$TAB"}"
+        pct="${rest%%"$TAB"*}"; rest="${rest#*"$TAB"}"
+        dlname="${rest#*"$TAB"}"                # field 2 is the ETA — unused here
+        pct="${pct%%.*}"; pct="${pct//[!0-9]/}" # "  0.2%" -> "0", "100.0%" -> "100"
+        [ -n "$pct" ] || continue
+        [ "$pct" -le 100 ] || continue
+        name="$(sanitize "$(basename -- "$dlname")")"
+        if [ -n "$prev_name" ] && [ "$name" != "$prev_name" ] && [ "$done_stages" -lt $((STAGES - 1)) ]; then
+          done_stages=$((done_stages + 1))
+        fi
+        prev_name="$name"
+        overall=$(( (done_stages * 100 + pct) / STAGES ))
+        [ "$overall" -gt 99 ] && overall=99
+        if [ "$overall" -gt "$last_pct" ]; then    # keep the bar monotone
+          write_progress "$overall" "$name"; last_pct=$overall
+        fi
+        ;;
+      /*)
+        FINAL_SRC="$line"   # after_move:filepath — the true completion signal
+        ;;
+    esac
+  done < "$fifo"
+  wait "$CHILD_PID"; rc=$?
+  CHILD_PID=""
+
+  if [ "$rc" -ne 0 ] || [ -z "$FINAL_SRC" ] || [ ! -s "$FINAL_SRC" ]; then
+    exit 1   # yt-dlp's ERROR: lines already went to stderr; staging dir is removed on exit
+  fi
+
+  # Collision handling: the [id] in the name makes cross-video collisions
+  # impossible, so an existing identical file is the same video (reuse it);
+  # same name with different bytes never overwrites — it gets " (2)"-numbered.
+  fname="$(basename -- "$FINAL_SRC")"
+  target="$destdir/$fname"
+  if [ -e "$target" ] && cmp -s "$FINAL_SRC" "$target"; then
+    rm -f "$FINAL_SRC"
+  else
+    if [ -e "$target" ]; then
+      stem="${fname%.*}"; ext="${fname##*.}"
+      if [ "$stem" = "$fname" ]; then ext=""; else ext=".$ext"; fi
+      n=2
+      while [ -e "$destdir/$stem ($n)$ext" ]; do n=$((n + 1)); done
+      target="$destdir/$stem ($n)$ext"
+    fi
+    mv -f "$FINAL_SRC" "$target" || {
+      echo "ERROR: Couldn't move the finished download into: $destdir" >&2; exit 1; }
+  fi
+  [ -s "$target" ] || exit 1
+
+  write_progress 100 "$(sanitize "$(basename -- "$target")")"
+  printf 'FILE\t%s\n' "$target"
+  exit 0
+}
+
+[ "$#" -ge 1 ] || usage
+CMD="$1"; shift
+case "$CMD" in
+  info) cmd_info "$@" ;;
+  get)  cmd_get "$@" ;;
+  *)    usage ;;
+esac

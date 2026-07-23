@@ -7,6 +7,9 @@
 # Progress: if TRANSCRIBE_PROGRESS_FILE is set, an overall-percent line is written
 # to it as work proceeds (tab-separated: PCT<tab>INDEX<tab>TOTAL<tab>NAME). The
 # app polls this to drive a progress bar; terminal users can ignore it.
+#
+# Exit codes: 0 = every file transcribed · 1 = at least one file failed ·
+#             2 = usage · 3 = a required tool or model is missing (see stderr).
 set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
@@ -14,19 +17,26 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROGRESS_FILE="${TRANSCRIBE_PROGRESS_FILE:-}"
 
+if [ "$#" -lt 3 ]; then
+  echo "Usage: transcribe MODEL LANG file1 [file2 ...]" >&2
+  echo "  MODEL: best | fast" >&2
+  exit 2
+fi
+
 # Locate whisper binary
 if command -v whisper-cli >/dev/null 2>&1; then WHISPER=whisper-cli
 elif command -v whisper-cpp >/dev/null 2>&1; then WHISPER=whisper-cpp
 elif command -v main >/dev/null 2>&1; then WHISPER=main
 else
   echo "whisper.cpp not found. Please run setup.command first." >&2
-  exit 1
+  exit 3
 fi
 
-if [ "$#" -lt 3 ]; then
-  echo "Usage: transcribe MODEL LANG file1 [file2 ...]" >&2
-  echo "  MODEL: best | fast" >&2
-  exit 2
+# Without ffmpeg every file would fail with a misleading "could not read
+# audio" — catch the real cause up front instead.
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  echo "ffmpeg not found. Please run setup.command first." >&2
+  exit 3
 fi
 
 # Map model selector -> GGML file (keep filenames in sync with setup.command)
@@ -40,7 +50,7 @@ MODEL="$ROOT/models/$MODEL_NAME"
 
 if [ ! -f "$MODEL" ]; then
   echo "Model not found at $MODEL. Please run setup.command first." >&2
-  exit 1
+  exit 3
 fi
 
 # Language: hr/sl, "auto" to detect, or any Whisper code/name (en, english, de …)
@@ -53,32 +63,71 @@ case "$raw_lang" in
 esac
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf "$tmpdir"' EXIT
+# Whisper's stderr is kept here so failures stay diagnosable (path printed on
+# failure; deleted only when every file succeeded).
+RUN_LOG="$(mktemp -t transcribe_log)"
+CHILD_PID=""
+CUR_BASE=""
+
+cleanup() { rm -rf "$tmpdir"; }
+trap cleanup EXIT
+
+# Cancelling must stop the in-flight whisper/ffmpeg too — killing only the
+# script would leave whisper burning CPU for hours — and must remove partial
+# outputs so a later run can't mistake them for a finished transcript.
+on_signal() {
+  trap '' TERM INT
+  if [ -n "$CHILD_PID" ]; then
+    kill -TERM "$CHILD_PID" 2>/dev/null
+    wait "$CHILD_PID" 2>/dev/null
+  fi
+  if [ -n "$CUR_BASE" ]; then rm -f "${CUR_BASE}.txt" "${CUR_BASE}.srt"; fi
+  rm -f "$RUN_LOG"
+  rm -rf "$tmpdir"
+  exit 130
+}
+trap on_signal TERM INT
 
 # Atomically record overall progress (no-op unless a progress file was requested).
+# $$ in the staging name keeps two runs that were (wrongly) given the same
+# progress file from trampling each other's half-written line.
 write_progress() {   # $1 = overall percent (0-100)
   [ -n "$PROGRESS_FILE" ] || return 0
   printf '%s\t%s\t%s\t%s\n' "$1" "$((FILE_INDEX+1))" "$FILE_TOTAL" "$FILE_NAME" \
-    > "$PROGRESS_FILE.tmp" 2>/dev/null && mv -f "$PROGRESS_FILE.tmp" "$PROGRESS_FILE" 2>/dev/null || true
+    > "$PROGRESS_FILE.$$.tmp" 2>/dev/null && mv -f "$PROGRESS_FILE.$$.tmp" "$PROGRESS_FILE" 2>/dev/null || true
 }
 
 # Run whisper on one WAV; when a progress file is requested, parse whisper's
-# per-file percentage (-pp) and convert it to an overall percentage.
+# per-file percentage (-pp) and convert it to an overall percentage. Whisper
+# runs in the background (PID tracked for the cancel trap) with stderr through
+# a fifo so the percent parse and the log both see every line.
 run_whisper() {   # $1 = wav, $2 = output prefix
+  local rc
   if [ -n "$PROGRESS_FILE" ]; then
-    "$WHISPER" -m "$MODEL" -f "$1" -l "$LANG_CODE" -otxt -osrt -of "$2" -pp 2>&1 >/dev/null \
-    | while IFS= read -r line; do
-        case "$line" in
-          *"progress ="*%*)
-            p="${line//[!0-9]/}"          # keep digits only, e.g. 69 or 100
-            [ -n "$p" ] || continue
-            write_progress "$(( (FILE_INDEX * 100 + p) / FILE_TOTAL ))"
-            ;;
-        esac
-      done
+    local fifo="$tmpdir/whisper.fifo"
+    rm -f "$fifo"; mkfifo "$fifo" || return 1
+    "$WHISPER" -m "$MODEL" -f "$1" -l "$LANG_CODE" -otxt -osrt -of "$2" -pp >/dev/null 2>"$fifo" &
+    CHILD_PID=$!
+    while IFS= read -r line; do
+      printf '%s\n' "$line" >> "$RUN_LOG"
+      case "$line" in
+        *"progress ="*%*)
+          # Anchor on the "progress = NN%" token: any other digit on the line
+          # (thread id, timestamp) must not leak into the percentage.
+          p="${line##*progress =}"; p="${p%%[%]*}"; p="${p//[!0-9]/}"
+          [ -n "$p" ] || continue
+          [ "$p" -le 100 ] || continue
+          write_progress "$(( (FILE_INDEX * 100 + p) / FILE_TOTAL ))"
+          ;;
+      esac
+    done < "$fifo"
   else
-    "$WHISPER" -m "$MODEL" -f "$1" -l "$LANG_CODE" -otxt -osrt -of "$2" >/dev/null 2>&1
+    "$WHISPER" -m "$MODEL" -f "$1" -l "$LANG_CODE" -otxt -osrt -of "$2" >/dev/null 2>>"$RUN_LOG" &
+    CHILD_PID=$!
   fi
+  wait "$CHILD_PID"; rc=$?
+  CHILD_PID=""
+  return "$rc"
 }
 
 echo "Model: $MODEL_NAME"
@@ -88,30 +137,61 @@ FILE_NAME=""
 ok=0; fail=0
 for f in "$@"; do
   FILE_INDEX=$((FILE_INDEX + 1))
-  FILE_NAME="$(basename "$f")"
+  # NAME travels in a tab-separated progress line — tabs/newlines in the
+  # filename would tear the record for the reader. (The inner $() strips the
+  # trailing newline first so it doesn't become a stray trailing space.)
+  FILE_NAME="$(printf '%s' "$(basename -- "$f")" | tr '\t\n\r' '   ')"
   if [ ! -f "$f" ]; then
     echo "SKIP (not a file): $f" >&2; fail=$((fail+1)); continue
   fi
-  base="${f%.*}"                     # strip extension -> output prefix
+  # Strip the extension from the FILENAME only: ${f%.*} on the whole path eats
+  # from the last dot anywhere, so an extensionless file inside a dotted
+  # folder ("videos v2.0/clip") would write its transcript to the wrong place.
+  dir="$(dirname -- "$f")"
+  fname="$(basename -- "$f")"
+  stem="${fname%.*}"
+  [ -n "$stem" ] || stem="$fname"     # dotfiles: ".hidden" keeps its full name
+  base="$dir/$stem"
   wav="$tmpdir/audio.wav"
 
   echo "Transcribing: $FILE_NAME (language=$LANG_CODE)"
   write_progress "$(( FILE_INDEX * 100 / FILE_TOTAL ))"   # baseline as this file starts
-  if ! ffmpeg -y -loglevel error -i "$f" -vn -ar 16000 -ac 1 -c:a pcm_s16le "$wav"; then
+  ffmpeg -y -nostdin -loglevel error -i "$f" -vn -ar 16000 -ac 1 -c:a pcm_s16le "$wav" &
+  CHILD_PID=$!
+  if ! wait "$CHILD_PID"; then
+    CHILD_PID=""
     echo "SKIP (could not read audio): $FILE_NAME" >&2; fail=$((fail+1)); continue
   fi
+  CHILD_PID=""
 
+  # Audio extracted — nudge overall progress to a nonzero value as whisper
+  # starts. Whisper's -pp prints per-30s-window percentages, so clips that fit
+  # one window only ever print 0%; without this nudge the app would never see
+  # progress >= 1 and would sit on "Preparing audio…" until Done.
+  write_progress "$(( (FILE_INDEX * 100 + 1) / FILE_TOTAL ))"
+
+  # A transcript left over from an earlier run must not be mistaken for this
+  # run's result — whisper can fail while exiting 0, so only a freshly
+  # written file counts as success.
+  rm -f "${base}.txt" "${base}.srt"
+  CUR_BASE="$base"
   run_whisper "$wav" "$base"
-  # The file check catches silent failures (e.g. an invalid language code,
-  # which whisper reports but still exits 0 without writing output).
   if [ -f "${base}.txt" ]; then
     echo "  -> ${base}.txt + ${base}.srt"; ok=$((ok+1))
   else
-    echo "SKIP (transcription failed — is the language '$LANG_CODE' valid?): $FILE_NAME" >&2; fail=$((fail+1))
+    echo "SKIP (transcription failed — is the language '$LANG_CODE' valid?): $FILE_NAME" >&2
+    echo "  Details: $RUN_LOG" >&2
+    tail -n 15 "$RUN_LOG" >&2 2>/dev/null || true
+    fail=$((fail+1))
   fi
+  CUR_BASE=""
   rm -f "$wav"
 done
 
 write_progress 100
 echo "Done. $ok succeeded, $fail failed."
-[ "$fail" -eq 0 ]
+if [ "$fail" -eq 0 ]; then
+  rm -f "$RUN_LOG"
+  exit 0
+fi
+exit 1
