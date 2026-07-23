@@ -147,12 +147,9 @@ function folderMarkerPresent(opts) {
 
 module.exports = {
   folderRoot,
-  modelsDir,
   modelPath,
   findTool,
   childPATH,
   childEnv,
   folderMarkerPresent,
-  MAC_EXTRA_DIRS,
-  WIN_TOOL_SUBDIRS,
 };

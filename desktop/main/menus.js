@@ -120,4 +120,4 @@ function popupRowMenu({ Menu, window, x, y, state, copy, actions }) {
   menu.popup(opts);
 }
 
-module.exports = { installAppMenu, rowMenuTemplate, popupRowMenu };
+module.exports = { installAppMenu, popupRowMenu };

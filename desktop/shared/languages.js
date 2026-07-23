@@ -140,4 +140,4 @@ function isValid(code) {
   return code === auto.code || all.some((l) => l.code === code);
 }
 
-module.exports = { auto, all, displayOrder, filtered, nameFor, isValid };
+module.exports = { all, displayOrder, filtered, nameFor, isValid };

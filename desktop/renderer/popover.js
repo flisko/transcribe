@@ -160,5 +160,5 @@
     return close;
   }
 
-  window.TranscribePopover = { openLanguagePopover, openMenu, filterLanguages };
+  window.TranscribePopover = { openLanguagePopover, openMenu };
 })();
