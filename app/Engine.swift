@@ -19,6 +19,7 @@ enum EnginePaths {
     static var setupCommand: URL { root.appendingPathComponent("setup.command") }
     static var bestModel: URL { root.appendingPathComponent("models/ggml-large-v3.bin") }
     static var fastModel: URL { root.appendingPathComponent("models/ggml-large-v3-turbo.bin") }
+    static func modelFile(_ m: WhisperModel) -> URL { root.appendingPathComponent("models/\(m.fileName)") }
 
     /// GUI apps don't inherit the shell profile, so Homebrew's directories must
     /// be probed explicitly on top of whatever PATH launchd gave us.
@@ -63,6 +64,14 @@ struct DepProbeResult: Equatable {
     var linksLimited: Bool { !(ytDlpOK && downloadScriptOK) }
     var modelsOK: Bool { bestModelOK && fastModelOK }
 
+    /// Live per-model presence check (any of the six catalog models).
+    /// Cheap stat call — safe to evaluate on every menu render.
+    static func modelPresent(_ m: WhisperModel) -> Bool {
+        let size = (try? FileManager.default
+            .attributesOfItem(atPath: EnginePaths.modelFile(m).path)[.size] as? Int64 ?? 0) ?? 0
+        return size > m.minBytes
+    }
+
     static func probe() -> DepProbeResult {
         let fm = FileManager.default
         var r = DepProbeResult()
@@ -86,11 +95,8 @@ struct DepProbeResult: Equatable {
 
         // Size sanity, not just existence: an interrupted download leaves a
         // truncated model that whisper rejects at load time.
-        func fileSize(_ url: URL) -> Int64 {
-            (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int64 ?? 0) ?? 0
-        }
-        r.bestModelOK = fileSize(EnginePaths.bestModel) > 2_500_000_000
-        r.fastModelOK = fileSize(EnginePaths.fastModel) > 1_200_000_000
+        r.bestModelOK = DepProbeResult.modelPresent(Models.by("best"))
+        r.fastModelOK = DepProbeResult.modelPresent(Models.by("fast"))
         return r
     }
 }

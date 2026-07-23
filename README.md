@@ -111,10 +111,10 @@ bin/download get video "https://www.youtube.com/watch?v=…" ~/Downloads   # kee
 bin/download info "https://www.youtube.com/watch?v=…"                    # peek at the title first
 ```
 
-## The two models
+## The models
 
-Both are downloaded once by `setup.command` (~4.6GB total) so you can switch
-per transcription with no extra wait:
+The two main models are downloaded by `setup.command` (~4.6GB total) so you can
+switch per transcription with no extra wait:
 
 | Model | Whisper model | Best for | Trade-off |
 |-------|---------------|----------|-----------|
@@ -124,6 +124,14 @@ per transcription with no extra wait:
 For Croatian & Slovenian, **Best quality** is the recommended default — the
 speed-optimized `turbo` model loses the most accuracy exactly on these kinds
 of lower-resource languages.
+
+Four smaller optional models are also available in the app's Model menu —
+**Medium** (`medium`, ~1.5GB), **Small** (`small`, ~0.5GB), **Base** (`base`,
+~150MB), and **Tiny** (`tiny`, ~80MB). Each step down is faster and less
+accurate. They aren't downloaded by default: re-run `setup.command` and answer
+**y** when it offers the extra models (or run `./setup.command --all-models`
+from the Terminal). Picking a model that isn't downloaded simply marks that
+item as failed with a note telling you how to get it.
 
 ## Moving the folder / using it on another Mac
 

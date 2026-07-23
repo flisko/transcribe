@@ -183,14 +183,19 @@ struct ContentView: View {
             }
 
             Menu {
-                Button(Copy.modelMenuBest) { modelSel = "best" }
-                Button(Copy.modelMenuFast) { modelSel = "fast" }
+                ForEach(Models.all) { m in
+                    // Missing models stay selectable (setup.command offers them);
+                    // the suffix warns before a queued item would fail.
+                    Button(m.menuTitle + (DepProbeResult.modelPresent(m) ? "" : Copy.modelNotDownloadedSuffix)) {
+                        modelSel = m.sel
+                    }
+                }
             } label: {
                 // One concatenated Text keeps the chevron AFTER the label: with
                 // separate Text+Image views the NSPopUpButton bridge moves the
                 // image to the leading edge, breaking parity with the Language
                 // control's label-then-chevron order.
-                Text("Model: \(modelSel == "fast" ? Copy.modelDisplayFast : Copy.modelDisplayBest) ")
+                Text("Model: \(Models.by(modelSel).display) ")
                     + Text(Image(systemName: "chevron.up.chevron.down"))
                         .font(.system(size: 9))
             }
@@ -317,7 +322,7 @@ struct QueueRow: View {
                     .foregroundStyle(.secondary)
                     // Failure/no-speech copy carries the fix instructions in its
                     // second half — give it room, and a tooltip with the full text.
-                    .lineLimit(item.state == .failed || item.doneNote != nil ? 4 : 1)
+                    .lineLimit(item.state == .failed || item.doneNote != nil || item.actionNote != nil ? 4 : 1)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(statusText)
                 if showsProgressBar {
@@ -393,6 +398,7 @@ struct QueueRow: View {
             if item.afterSleep && item.etaText == nil { return Copy.continuingAfterSleep }
             return Copy.transcribing(item.progressPct ?? 0, eta: item.etaText)
         case .done:
+            if let note = item.actionNote { return note }
             if item.copiedFlash { return Copy.transcriptCopied }
             if let note = item.doneNote { return note }
             let secs = item.finishedAt.flatMap { end in
@@ -827,14 +833,12 @@ struct SettingsView: View {
             Section(Copy.settingsSectionTranscription) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(Copy.settingsModel)
-                    modelOption(title: Copy.modelDisplayBest,
-                                caption: Copy.settingsBestCaption,
-                                value: "best",
-                                missing: !model.deps.bestModelOK)
-                    modelOption(title: Copy.modelDisplayFast,
-                                caption: Copy.settingsFastCaption,
-                                value: "fast",
-                                missing: !model.deps.fastModelOK)
+                    ForEach(Models.all) { m in
+                        modelOption(title: "\(m.display) (\(m.technical))",
+                                    caption: m.caption,
+                                    value: m.sel,
+                                    missing: !DepProbeResult.modelPresent(m))
+                    }
                 }
                 .padding(.vertical, 4)
 

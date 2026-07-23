@@ -4,6 +4,7 @@
 // All state mutation happens on the main thread (EngineJob and ProgressPoller
 // both call back there).
 import AppKit
+import os
 import SwiftUI
 import UserNotifications
 
@@ -53,6 +54,7 @@ struct QueueItem: Identifiable, Equatable {
     var errorDetails: String?      // full engine stderr, for "Copy Error Details"
     var doneNote: String?          // empty-transcript note
     var copiedFlash = false        // "Transcript copied." for 2 s
+    var actionNote: String?        // transient feedback when a row action can't run
     var finishedAt: Date?
     var txtURL: URL?
     var srtURL: URL?
@@ -299,6 +301,11 @@ final class AppModel: ObservableObject {
         }
         guard fm.isWritableFile(atPath: input.deletingLastPathComponent().path) else {
             finishItem(id, failed: Copy.failOutputDirReadOnly(input.lastPathComponent), details: nil)
+            return
+        }
+        let chosenModel = Models.by(items[i].capturedModel ?? "best")
+        guard DepProbeResult.modelPresent(chosenModel) else {
+            finishItem(id, failed: Copy.failModelMissing(chosenModel.display), details: nil)
             return
         }
 
@@ -699,27 +706,66 @@ final class AppModel: ObservableObject {
 
     // MARK: Row actions
 
+    private static let actionLog = Logger(subsystem: "com.flisko.transcribe", category: "row-actions")
+
+    /// A row action must never fail silently: if the file it needs is gone
+    /// (moved, deleted, on an ejected drive), say so in the status line.
+    private func requireFile(_ url: URL?, for id: UUID) -> URL? {
+        if let url = url, FileManager.default.fileExists(atPath: url.path) { return url }
+        Self.actionLog.debug("action target missing: \(url?.path ?? "nil", privacy: .public)")
+        showActionNote(id, Copy.fileGoneNote)
+        return nil
+    }
+
+    private func showActionNote(_ id: UUID, _ note: String) {
+        guard let i = index(of: id) else { return }
+        items[i].actionNote = note
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self, let i = self.index(of: id) else { return }
+            self.items[i].actionNote = nil
+        }
+    }
+
     func openTranscript(_ id: UUID) {
-        guard let i = index(of: id), let txt = items[i].txtURL else { return }
+        Self.actionLog.debug("openTranscript tapped")
+        guard let i = index(of: id), let txt = requireFile(items[i].txtURL, for: id) else { return }
         NSWorkspace.shared.open(txt)
     }
 
     func openSubtitles(_ id: UUID) {
-        guard let i = index(of: id), let srt = items[i].srtURL else { return }
+        Self.actionLog.debug("openSubtitles tapped")
+        guard let i = index(of: id), let srt = requireFile(items[i].srtURL, for: id) else { return }
         NSWorkspace.shared.open(srt)
     }
 
     func showInFinder(_ id: UUID) {
+        Self.actionLog.debug("showInFinder tapped")
         guard let i = index(of: id) else { return }
-        let target = items[i].txtURL ?? items[i].inputFile
-        if let target = target {
-            NSWorkspace.shared.activateFileViewerSelecting([target])
+        let fm = FileManager.default
+        // Prefer the transcript, fall back to the source media, then to the
+        // containing folder — reveal *something* rather than doing nothing.
+        for candidate in [items[i].txtURL, items[i].inputFile].compactMap({ $0 }) {
+            if fm.fileExists(atPath: candidate.path) {
+                NSWorkspace.shared.activateFileViewerSelecting([candidate])
+                return
+            }
+            let folder = candidate.deletingLastPathComponent()
+            if fm.fileExists(atPath: folder.path) {
+                NSWorkspace.shared.activateFileViewerSelecting([folder])
+                showActionNote(id, Copy.fileGoneNote)
+                return
+            }
         }
+        showActionNote(id, Copy.fileGoneNote)
     }
 
     func copyTranscript(_ id: UUID) {
-        guard let i = index(of: id), let txt = items[i].txtURL,
-              let content = try? String(contentsOf: txt, encoding: .utf8) else { return }
+        Self.actionLog.debug("copyTranscript tapped")
+        guard let i = index(of: id), let txt = requireFile(items[i].txtURL, for: id) else { return }
+        guard let content = try? String(contentsOf: txt, encoding: .utf8) else {
+            showActionNote(id, Copy.fileGoneNote)
+            return
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(content, forType: .string)
         items[i].copiedFlash = true

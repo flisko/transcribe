@@ -7,18 +7,26 @@ set -euo pipefail
 cd "$(dirname "$0")"
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-# Both models are downloaded so you can pick per transcription (~4.6GB total):
+# The two main models are always downloaded (~4.6GB total):
 #   ggml-large-v3.bin        -> "Best quality" (most accurate, ~3GB)
 #   ggml-large-v3-turbo.bin  -> "Fast"         (~4x faster, ~1.6GB)
+# Smaller optional models (chosen in the app's Model menu) can be added on
+# request — run with --all-models, or answer "y" when asked below.
 MODELS=("ggml-large-v3.bin" "ggml-large-v3-turbo.bin")
+OPTIONAL_MODELS=("ggml-medium.bin" "ggml-small.bin" "ggml-base.bin" "ggml-tiny.bin")
 BASE_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
 # Smallest believable size per model — anything under this is a truncated
 # download left by an interrupted run, not a usable model.
+# Keep in sync with the app's model catalog (app/Logic.swift).
 min_size_for() {
   case "$1" in
     ggml-large-v3.bin)       echo 2500000000 ;;   # real file ~3.1GB
     ggml-large-v3-turbo.bin) echo 1200000000 ;;   # real file ~1.6GB
+    ggml-medium.bin)         echo 1300000000 ;;   # real file ~1.5GB
+    ggml-small.bin)          echo 400000000  ;;   # real file ~0.5GB
+    ggml-base.bin)           echo 120000000  ;;   # real file ~148MB
+    ggml-tiny.bin)           echo 60000000   ;;   # real file ~78MB
     *)                       echo 1000000000 ;;
   esac
 }
@@ -113,7 +121,30 @@ expected_size_for() {
 
 mkdir -p models
 download_failed=0
-for m in "${MODELS[@]}"; do
+
+# Which models to fetch this run: the two main ones always; the optional small
+# ones with --all-models, on request, or when a (possibly partial) copy is
+# already here — a leftover .download is always finished, never abandoned.
+fetch_list=("${MODELS[@]}")
+want_optional=0
+for arg in "$@"; do
+  [ "$arg" = "--all-models" ] && want_optional=1
+done
+if [ "$want_optional" -eq 0 ] && [ -t 0 ]; then
+  echo ""
+  echo "The app can also use smaller, faster (less accurate) models:"
+  echo "  Medium ~1.5GB · Small ~0.5GB · Base ~150MB · Tiny ~80MB"
+  read -r -p "Download the extra models too? [y/N] " extra_ans || extra_ans=""
+  case "$extra_ans" in y|Y|yes|YES) want_optional=1 ;; esac
+  echo ""
+fi
+for m in "${OPTIONAL_MODELS[@]}"; do
+  if [ "$want_optional" -eq 1 ] || [ -f "models/$m" ] || [ -f "models/$m.download" ]; then
+    fetch_list=("${fetch_list[@]}" "$m")
+  fi
+done
+
+for m in "${fetch_list[@]}"; do
   min="$(min_size_for "$m")"
   expected="$(expected_size_for "$m")"
   case "$expected" in *[!0-9]*|"") expected="" ;; esac
@@ -144,9 +175,9 @@ for m in "${MODELS[@]}"; do
   # always gets a chance to top it off first (a file that is already complete
   # fetches zero extra bytes), and only an exact size match makes it a model.
   if [ -f "models/$m.download" ]; then
-    echo "Resuming the download of model $m (a few GB — this can take a while)…"
+    echo "Resuming the download of model $m (this can take a while)…"
   else
-    echo "Downloading model $m (a few GB — this can take a while)…"
+    echo "Downloading model $m (this can take a while)…"
   fi
   if curl -C - -L --fail -o "models/$m.download" "$BASE_URL/$m"; then
     size="$(file_size "models/$m.download")"

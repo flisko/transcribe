@@ -39,11 +39,16 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   exit 3
 fi
 
-# Map model selector -> GGML file (keep filenames in sync with setup.command)
+# Map model selector -> GGML file (keep filenames in sync with setup.command
+# and the app's model catalog in app/Logic.swift)
 model_sel="$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"; shift
 case "$model_sel" in
   fast|turbo|large-v3-turbo) MODEL_NAME="ggml-large-v3-turbo.bin" ;;
   best|large-v3|"")          MODEL_NAME="ggml-large-v3.bin" ;;
+  medium)                    MODEL_NAME="ggml-medium.bin" ;;
+  small)                     MODEL_NAME="ggml-small.bin" ;;
+  base)                      MODEL_NAME="ggml-base.bin" ;;
+  tiny)                      MODEL_NAME="ggml-tiny.bin" ;;
   *)                         MODEL_NAME="ggml-large-v3.bin" ;;   # unknown -> best
 esac
 MODEL="$ROOT/models/$MODEL_NAME"

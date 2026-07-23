@@ -16,10 +16,13 @@ enum Copy {
     static let invalidLink = "That doesn't look like a link. Copy the video's address and paste it here."
     static let searchLanguages = "Search languages"
     static let autoDetect = "Auto-detect"
-    static let modelMenuBest = "Best quality — most accurate, slower (recommended)"
-    static let modelMenuFast = "Fast — about 4x faster, slightly less accurate"
     static let modelDisplayBest = "Best quality"
     static let modelDisplayFast = "Fast"
+    static let modelNotDownloadedSuffix = " — not downloaded"
+    static func failModelMissing(_ display: String) -> String {
+        "The '\(display)' model isn't downloaded. Run setup.command (it offers the extra models), or switch models."
+    }
+    static let fileGoneNote = "That file isn't there anymore — it may have been moved or deleted. Use Transcribe Again to redo it."
     static let emptyTitle = "Ready to transcribe"
     static let emptySubtitle = "Drop a file above, or paste a video link.\nEach file gets a transcript (.txt) and subtitles (.srt)."
     static let dropOverlay = "Drop to add to the queue"
@@ -65,11 +68,11 @@ enum Copy {
     static let failDownloadPrivateOrRemoved = "Couldn't download — the video may be private or removed."
     static let failDownloadNetwork = "Couldn't download — check your internet connection, then press Retry."
     static let failLookup = "Couldn't find a video at this link."
+    static let failNoVideoAtLink = "There's no video at this link — it may be a photo post."
     static let failNoAudio = "This file has no audio track."
     static let failUnreadable = "Couldn't read this file — it may be damaged or not an audio/video file."
     static let failDisk = "Not enough disk space. Free up some space, then press Retry."
     static let failTranscription = "Transcription didn't finish. Press Retry — if it keeps failing, try the Best quality model."
-    static let failFastModelMissing = "The Fast model isn't downloaded. Run setup.command, or switch to Best quality."
     static let failEngineMissing = "The speech engine is missing. Run setup.command, then press Retry."
 
     // MARK: Failure reasons (error catalog — cases the UX copy doesn't cover)
@@ -83,7 +86,6 @@ enum Copy {
     static let failYtDlpMissing = "Downloading videos from the internet needs a small helper that isn't installed yet. Double-click setup.command (in the Transcribe folder) once to install it. You can still transcribe files that are already on this Mac."
     static let failFfmpegMissing = "A helper that reads sound from video files (ffmpeg) is missing on this Mac. Please double-click setup.command (in the Transcribe folder) to install it, then try again."
     static let failModelCorrupt = "The speech model file on this Mac looks damaged — usually this means its download was interrupted at some point. Please double-click setup.command; it will download a fresh copy for you."
-    static let failBestModelMissing = "The 'Best quality' speech model isn't on this Mac. Double-click setup.command to download the missing model (this is a few-GB download)."
     static func failOutOfMemory(_ name: String) -> String { "Transcribing '\(name)' stopped because your Mac ran out of memory. Close some other apps and try again — or choose the Fast model, which needs much less memory." }
     static func failFileMissing(_ name: String) -> String { "Skipped '\(name)' — the file can't be found any more. It may have been moved, renamed, or deleted, or it's on a drive that isn't connected." }
     static func failZeroLength(_ name: String) -> String { "Skipped '\(name)' — the file is empty, so there is nothing to transcribe." }
@@ -142,8 +144,6 @@ enum Copy {
     // MARK: Settings pane
     static let settingsSectionTranscription = "Transcription"
     static let settingsModel = "Model"
-    static let settingsBestCaption = "Most accurate for Croatian, Slovenian, and other smaller languages. Slower. Recommended."
-    static let settingsFastCaption = "About 4x faster. Slightly less accurate, mainly on smaller languages."
     static let settingsModelMissingTooltip = "This model isn't downloaded — run setup.command."
     static let settingsLanguage = "Language"
     static let settingsLanguageHelp = "The language spoken in your files. Choose Auto-detect if it varies or you're not sure."

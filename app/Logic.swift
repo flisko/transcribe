@@ -3,6 +3,53 @@
 // classification. No AppKit/SwiftUI here so the test runner can compile it.
 import Foundation
 
+// MARK: - Whisper models
+
+struct WhisperModel: Identifiable, Equatable {
+    let sel: String        // engine selector, also the persisted @AppStorage value
+    let display: String    // short human name shown in the quick-setting label
+    let technical: String  // whisper.cpp model name, shown in (parentheses)
+    let fileName: String   // GGML file under models/
+    let minBytes: Int64    // plausibility floor: smaller means truncated/corrupt
+    let blurb: String      // one-line trade-off shown in the quick-settings menu
+    let caption: String    // fuller sentence shown under the option in Settings
+    var id: String { sel }
+    var menuTitle: String { "\(display) (\(technical)) — \(blurb)" }
+}
+
+enum Models {
+    static let all: [WhisperModel] = [
+        WhisperModel(sel: "best", display: Copy.modelDisplayBest, technical: "large-v3",
+                     fileName: "ggml-large-v3.bin", minBytes: 2_500_000_000,
+                     blurb: "most accurate, slower (recommended)",
+                     caption: "Most accurate for Croatian, Slovenian, and other smaller languages. Slower. Recommended."),
+        WhisperModel(sel: "fast", display: Copy.modelDisplayFast, technical: "large-v3-turbo",
+                     fileName: "ggml-large-v3-turbo.bin", minBytes: 1_200_000_000,
+                     blurb: "about 4x faster, slightly less accurate",
+                     caption: "About 4x faster. Slightly less accurate, mainly on smaller languages."),
+        WhisperModel(sel: "medium", display: "Medium", technical: "medium",
+                     fileName: "ggml-medium.bin", minBytes: 1_300_000_000,
+                     blurb: "lighter and quicker, still solid",
+                     caption: "A good middle ground when the big models feel slow. Half the size of Fast."),
+        WhisperModel(sel: "small", display: "Small", technical: "small",
+                     fileName: "ggml-small.bin", minBytes: 400_000_000,
+                     blurb: "much faster, noticeably less accurate",
+                     caption: "Much faster and much smaller. Fine for clear speech in major languages."),
+        WhisperModel(sel: "base", display: "Base", technical: "base",
+                     fileName: "ggml-base.bin", minBytes: 120_000_000,
+                     blurb: "very fast, rough transcripts",
+                     caption: "Very fast rough drafts. Expect mistakes, especially outside English."),
+        WhisperModel(sel: "tiny", display: "Tiny", technical: "tiny",
+                     fileName: "ggml-tiny.bin", minBytes: 60_000_000,
+                     blurb: "fastest, lowest accuracy",
+                     caption: "The fastest possible pass. Only for quick gist checks."),
+    ]
+
+    static func by(_ sel: String) -> WhisperModel {
+        all.first { $0.sel == sel } ?? all[0]   // unknown selector -> Best, same as the engine
+    }
+}
+
 // MARK: - Whisper languages
 
 struct WhisperLanguage: Identifiable, Equatable {
@@ -363,6 +410,12 @@ func classifyDownloadFailure(exitCode: Int32, stderr: String, lookupStage: Bool 
         .map { $0.trimmingCharacters(in: .whitespaces) }
         .filter { $0.hasPrefix("error:") }
         .joined(separator: "\n")
+    // An Instagram image post (or other no-video item) errors with "No video
+    // formats found" PLUS the generic report-this-issue boilerplate — check it
+    // before the stale patterns or the user is sent into a futile setup loop.
+    if errorLines.contains("no video formats found") {
+        return DownloadFailure(message: Copy.failNoVideoAtLink, stale: false)
+    }
     if ["some formats may be missing", "challenge solving failed", "nsig",
         "confirm you're not a bot", "confirm you are not a bot", "unable to extract",
         "failed to parse json", "please report this issue",
@@ -387,7 +440,7 @@ func classifyTranscribeFailure(exitCode: Int32, stderr: String, usedModel: Strin
     if exitCode == 3 {
         if has(["ffmpeg"]) { return Copy.failFfmpegMissing }
         if has(["model"]) {
-            return usedModel == "fast" ? Copy.failFastModelMissing : Copy.failBestModelMissing
+            return Copy.failModelMissing(Models.by(usedModel).display)
         }
         return Copy.failEngineMissing
     }
