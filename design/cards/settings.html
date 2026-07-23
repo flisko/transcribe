@@ -1,0 +1,163 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Settings</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+  display:flex;flex-direction:column;align-items:center;gap:var(--space-5);
+}
+.ds-head{max-width:640px;width:100%}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.window{width:420px;max-width:100%;background:var(--color-window-bg);
+  border-radius:var(--radius-card);box-shadow:var(--shadow-popover);overflow:hidden}
+.titlebar{display:flex;align-items:center;height:var(--size-titlebar-height);
+  padding:0 var(--space-4);position:relative;border-bottom:1px solid var(--color-separator)}
+.lights{display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:var(--radius-capsule)}
+.titlebar .wt{position:absolute;left:0;right:0;text-align:center;
+  font-size:var(--font-size-body);font-weight:var(--weight-semibold);color:var(--color-secondary-label)}
+.pane{padding:var(--space-5) var(--space-5) var(--space-6)}
+
+.section{margin-bottom:var(--space-5)}
+.section:last-child{margin-bottom:0}
+.section > h2{font-size:var(--font-size-caption);font-weight:var(--weight-semibold);
+  color:var(--color-secondary-label);margin:0 var(--space-2) var(--space-1)}
+.group{background:var(--color-card-bg);border-radius:var(--radius-card);box-shadow:var(--shadow-card)}
+.frow{padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-2)}
+.frow + .frow{border-top:1px solid var(--color-separator)}
+.frow .line{display:flex;align-items:center;gap:var(--space-2)}
+.frow .lbl{flex:1;font-size:var(--font-size-body)}
+.cap{font-size:var(--font-size-caption);line-height:var(--line-height-caption);
+  color:var(--color-secondary-label)}
+
+.opt{display:flex;align-items:flex-start;gap:var(--space-2)}
+.opt + .opt{margin-top:var(--space-2)}
+.radio{flex:none;width:14px;height:14px;margin-top:1px;border-radius:var(--radius-capsule);
+  background:var(--color-field-bg);box-shadow:inset 0 0 0 1px var(--color-btn-border), var(--shadow-knob)}
+.radio.on{background:var(--color-accent);box-shadow:var(--shadow-knob);position:relative}
+.radio.on::after{content:"";position:absolute;inset:4.5px;border-radius:var(--radius-capsule);
+  background:var(--color-on-accent)}
+.opt .txt b{font-size:var(--font-size-body);font-weight:var(--weight-regular);
+  display:inline-flex;align-items:center;gap:var(--space-1)}
+.opt .txt small{display:block;font-size:var(--font-size-caption);
+  line-height:var(--line-height-caption);color:var(--color-secondary-label);margin-top:1px}
+
+.btn{display:inline-flex;align-items:center;gap:var(--space-1);height:22px;padding:0 var(--space-3);
+  border:none;border-radius:var(--radius-button);font-family:var(--font-family);
+  font-size:var(--font-size-body);line-height:1;color:var(--color-label);
+  background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default;flex:none}
+.btn .chev{color:var(--color-secondary-label);display:inline-flex}
+
+.switch{flex:none;position:relative;width:34px;height:20px;border-radius:var(--radius-capsule);
+  background:var(--color-track);box-shadow:inset 0 0 0 .5px var(--color-btn-border)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+  border-radius:var(--radius-capsule);background:var(--color-on-accent);box-shadow:var(--shadow-knob)}
+.switch.on{background:var(--color-accent);box-shadow:none}
+.switch.on::after{left:16px}
+
+.pathrow{display:flex;align-items:center;gap:var(--space-2)}
+.pathrow .folder{display:inline-flex;color:var(--color-secondary-label)}
+.pathrow .name{flex:1;font-size:var(--font-size-body)}
+
+.notes{max-width:640px;width:100%;display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+</style>
+</head>
+<body>
+  <div class="ds-head">
+    <h1>Settings — General</h1>
+    <p>Single pane, ~420px, opened by the toolbar gear or &#8984;,. Five controls total — every value persists instantly, no Apply button. The Model and Language keys are shared with the main-window quick settings.</p>
+  </div>
+
+  <div class="window">
+    <div class="titlebar">
+      <div class="lights">
+        <i style="background:var(--color-traffic-close)"></i>
+        <i style="background:var(--color-traffic-min)"></i>
+        <i style="background:var(--color-traffic-zoom)"></i>
+      </div>
+      <span class="wt">General</span>
+    </div>
+    <div class="pane">
+
+      <div class="section">
+        <h2>Transcription</h2>
+        <div class="group">
+          <div class="frow">
+            <div class="opt">
+              <span class="radio on"></span>
+              <span class="txt"><b>Best quality</b><small>Most accurate for Croatian, Slovenian, and other smaller languages. Slower. Recommended.</small></span>
+            </div>
+            <div class="opt">
+              <span class="radio"></span>
+              <span class="txt"><b>Fast
+                <svg width="13" height="13" viewBox="0 0 24 24"><path d="M10.28 3.9 2.33 17.66a2 2 0 0 0 1.73 3.04h15.88a2 2 0 0 0 1.73-3.04L13.72 3.9a2 2 0 0 0-3.44 0Z" fill="var(--color-warning)"/><path d="M12 9v5" stroke="var(--color-on-warning)" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.1" r="1.15" fill="var(--color-on-warning)"/></svg>
+              </b><small>About 4x faster. Slightly less accurate, mainly on smaller languages.</small></span>
+            </div>
+          </div>
+          <div class="frow">
+            <div class="line">
+              <span class="lbl">Language</span>
+              <span class="btn">Croatian <span class="chev"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg></span></span>
+            </div>
+            <div class="cap">The language spoken in your files. Choose Auto-detect if it varies or you&#8217;re not sure.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Video links</h2>
+        <div class="group">
+          <div class="frow">
+            <div class="line">
+              <span class="lbl">Keep the downloaded video file</span>
+              <span class="switch"></span>
+            </div>
+            <div class="cap">When off, only the audio is downloaded — faster and smaller. Your transcript is saved either way.</div>
+          </div>
+          <div class="frow">
+            <div class="line">
+              <span class="lbl">Save downloads to</span>
+            </div>
+            <div class="pathrow">
+              <span class="folder" title="/Users/ana/Downloads"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 7.5V6a1.5 1.5 0 0 1 1.5-1.5h4l2 2.5h9A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg></span>
+              <span class="name">Downloads</span>
+              <span class="btn">Choose&#8230;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Notifications</h2>
+        <div class="group">
+          <div class="frow">
+            <div class="line">
+              <span class="lbl">Notify me when the queue finishes</span>
+              <span class="switch on"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="notes">
+    <span>&#8226; The amber triangle appears only when that model&#8217;s .bin file is missing; tooltip: &#8220;This model isn&#8217;t downloaded — run setup.command.&#8221;</span>
+    <span>&#8226; The Language button opens the searchable popover: &#8220;Search languages&#8221;, then Auto-detect, pinned Croatian and Slovenian, then ~97 languages A–Z with dimmed ISO codes.</span>
+    <span>&#8226; Switches tint with the app accent, per macOS. Deliberately not settings: concurrency, output formats, output location for local files.</span>
+  </div>
+</body>
+</html>

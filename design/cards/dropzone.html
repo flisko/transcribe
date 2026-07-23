@@ -1,0 +1,100 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Drop Zone</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+.label{font-size:var(--font-size-caption);font-weight:var(--weight-semibold);
+  color:var(--color-secondary-label);text-transform:uppercase;letter-spacing:.06em;
+  margin-bottom:var(--space-2)}
+
+/* --- Drop zone, idle --- */
+.dropzone{height:var(--size-dropzone-height);border-radius:var(--radius-card);
+  border:1.5px dashed var(--color-tertiary-label);background:var(--color-fill);
+  display:flex;align-items:center;gap:var(--space-3);padding:0 var(--space-4)}
+.dropzone .doc{color:var(--color-secondary-label);flex:none}
+.dropzone .txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dropzone .txt b{font-size:var(--font-size-body);font-weight:var(--weight-regular)}
+.dropzone .txt span{font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+.dropzone .spacer{flex:1}
+.btn{display:inline-flex;align-items:center;height:22px;padding:0 var(--space-3);border:none;
+  border-radius:var(--radius-button);font-family:var(--font-family);font-size:var(--font-size-body);
+  line-height:1;color:var(--color-label);background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default;flex:none}
+
+/* --- Full-window drop overlay, drag targeted --- */
+.stage{position:relative;height:220px;border-radius:var(--radius-card);
+  background:var(--color-content-bg);box-shadow:var(--shadow-card);overflow:hidden}
+.stage .ghost{position:absolute;inset:0;padding:var(--space-4);opacity:.45;filter:blur(.4px)}
+.ghost .dropzone{background:var(--color-fill)}
+.overlay{position:absolute;inset:var(--space-2);border-radius:var(--radius-card);
+  border:2px dashed var(--color-accent);background:var(--color-accent-tint);
+  display:flex;align-items:center;justify-content:center;gap:var(--space-2)}
+.overlay b{font-size:var(--font-size-title3);line-height:var(--line-height-title3);
+  font-weight:var(--weight-semibold);color:var(--color-accent)}
+
+.notes{display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Drop zone</h1>
+    <p>Always visible at the top of the window — 76px tall, 10px radius, 1.5px dashed stroke. Clicking anywhere in it opens the file picker (&#8984;O).</p>
+  </div>
+
+  <div>
+    <div class="label">Idle</div>
+    <div class="dropzone">
+      <svg class="doc" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M12 11v6.5M9 15l3 2.5L15 15"/></svg>
+      <div class="txt">
+        <b>Drop audio or video files here</b>
+        <span>MP3, MP4, MOV, M4A and most other formats</span>
+      </div>
+      <div class="spacer"></div>
+      <span class="btn">Browse&#8230;</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">Drag targeted — full-window overlay</div>
+    <div class="stage">
+      <div class="ghost">
+        <div class="dropzone">
+          <svg class="doc" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M12 11v6.5M9 15l3 2.5L15 15"/></svg>
+          <div class="txt">
+            <b>Drop audio or video files here</b>
+            <span>MP3, MP4, MOV, M4A and most other formats</span>
+          </div>
+          <div class="spacer"></div>
+          <span class="btn">Browse&#8230;</span>
+        </div>
+      </div>
+      <div class="overlay">
+        <svg width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="var(--color-accent)"/><path d="M12 7.5v9M7.5 12h9" stroke="var(--color-on-accent)" stroke-width="2" stroke-linecap="round"/></svg>
+        <b>Drop to add to the queue</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <span>&#8226; The overlay covers the whole window (inset 8px), accent fill at 10%, 2px dashed accent stroke; fades and scales in over 0.15s ease-out.</span>
+    <span>&#8226; Accepts file URLs and dragged text/URLs that parse as http(s) links — those become link items.</span>
+    <span>&#8226; During the setup state the overlay label reads &#8220;Finish setup to start transcribing&#8221; instead.</span>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Typography</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:760px;margin:0 auto}
+.ds-head{margin-bottom:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.panel{background:var(--color-card-bg);border-radius:var(--radius-card);box-shadow:var(--shadow-card);overflow:hidden}
+.trow{display:grid;grid-template-columns:118px 1fr;gap:var(--space-4);align-items:baseline;
+  padding:var(--space-4)}
+.trow + .trow{border-top:1px solid var(--color-separator)}
+.meta b{display:block;font-size:var(--font-size-caption);font-weight:var(--weight-semibold)}
+.meta span{display:block;font-family:var(--font-family-mono);font-size:var(--font-size-caption);
+  color:var(--color-tertiary-label);margin-top:2px}
+.sample .use{display:block;margin-top:var(--space-1);font-size:var(--font-size-caption);
+  line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+
+.t-title2{font-size:var(--font-size-title2);line-height:var(--line-height-title2);font-weight:var(--weight-semibold)}
+.t-title3{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.t-body{font-size:var(--font-size-body);line-height:var(--line-height-body);font-weight:var(--weight-regular)}
+.t-callout{font-size:var(--font-size-callout);line-height:var(--line-height-callout);color:var(--color-secondary-label)}
+.t-caption{font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-secondary-label)}
+.t-mono{font-family:var(--font-family-mono);font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-secondary-label)}
+
+.foot{margin-top:var(--space-4);font-size:var(--font-size-caption);line-height:var(--line-height-caption);
+  color:var(--color-tertiary-label)}
+@media (max-width:560px){.trow{grid-template-columns:1fr;gap:var(--space-1)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Type scale</h1>
+    <p>SF Pro via the system stack. Sizes mirror the macOS text styles used in SwiftUI — Body 13 is the default control size. Weights: regular 400, medium 500, semibold 600.</p>
+  </div>
+
+  <div class="panel">
+    <div class="trow">
+      <div class="meta"><b>Title 2</b><span>20 / 25 · 600</span></div>
+      <div class="sample">
+        <div class="t-title2">One-time setup</div>
+        <span class="use">Window-scale headings — the setup screen title. Rare.</span>
+      </div>
+    </div>
+    <div class="trow">
+      <div class="meta"><b>Title 3</b><span>15 / 20 · 600</span></div>
+      <div class="sample">
+        <div class="t-title3">Ready to transcribe</div>
+        <span class="use">Empty-state title, drop-overlay label.</span>
+      </div>
+    </div>
+    <div class="trow">
+      <div class="meta"><b>Body</b><span>13 / 17 · 400</span></div>
+      <div class="sample">
+        <div class="t-body">Drop audio or video files here</div>
+        <span class="use">Row titles, buttons, field text — the default everywhere.</span>
+      </div>
+    </div>
+    <div class="trow">
+      <div class="meta"><b>Callout</b><span>12 / 15 · 400</span></div>
+      <div class="sample">
+        <div class="t-callout">Transcribing &#8220;IMG_2827.mov&#8221; — 2 of 5 · about 14 min left</div>
+        <span class="use">Footer status line, quick-settings controls, empty-state copy. Secondary color.</span>
+      </div>
+    </div>
+    <div class="trow">
+      <div class="meta"><b>Caption</b><span>11 / 14 · 400</span></div>
+      <div class="sample">
+        <div class="t-caption">Transcribing — 37% · about 8 min left</div>
+        <span class="use">Row status lines, help captions, footnotes. Secondary color.</span>
+      </div>
+    </div>
+    <div class="trow">
+      <div class="meta"><b>Mono caption</b><span>11 / 14 · 400</span></div>
+      <div class="sample">
+        <div class="t-mono">hr&#8195;Croatian&#8195;·&#8195;PCT&#9;INDEX&#9;TOTAL&#9;NAME</div>
+        <span class="use">ISO codes in the language popover, technical annotations. SF Mono.</span>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot">Truncation: filenames truncate in the middle (&#8220;Predavanje – fiz&#8230;ika 3.mp3&#8221;) so the extension survives; status lines truncate at the tail. No text is ever set in the accent color.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Colors</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:760px;margin:0 auto}
+.ds-head{margin-bottom:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)}
+@media (max-width:620px){.cols{grid-template-columns:1fr}}
+
+/* Each column re-scopes the theme via data-theme, then paints with its own tokens. */
+.theme-col{
+  background:var(--color-window-bg);color:var(--color-label);
+  border-radius:var(--radius-card);box-shadow:var(--shadow-card);
+  padding:var(--space-4);
+}
+.theme-col h2{font-size:var(--font-size-caption);font-weight:var(--weight-semibold);
+  text-transform:uppercase;letter-spacing:.06em;color:var(--color-secondary-label);
+  margin:var(--space-4) 0 var(--space-2)}
+.theme-col h2:first-child{margin-top:0}
+
+.sw{display:flex;align-items:center;gap:var(--space-2);padding:3px 0}
+.sw i{flex:none;width:22px;height:22px;border-radius:var(--radius-button);
+  box-shadow:inset 0 0 0 1px var(--color-separator)}
+.sw b{flex:1;font-size:var(--font-size-caption);font-weight:var(--weight-medium);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sw span{font-family:var(--font-family-mono);font-size:var(--font-size-caption);
+  color:var(--color-tertiary-label)}
+.sw i.on-content{background-color:var(--color-content-bg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Semantic colors</h1>
+    <p>Every color in the app is one of these tokens — light on the left, dark on the right (rendered inside a <span style="font-family:var(--font-family-mono)">[data-theme=&quot;dark&quot;]</span> wrapper). Text tokens mirror the macOS label hierarchy.</p>
+  </div>
+
+  <div class="cols">
+
+    <div class="theme-col" data-theme="light">
+      <h2>Accent — Light</h2>
+      <div class="sw"><i style="background:var(--color-accent)"></i><b>accent</b><span>#6E45E2</span></div>
+      <div class="sw"><i style="background:var(--color-accent-hover)"></i><b>accent-hover</b><span>#6139CE</span></div>
+      <div class="sw"><i style="background:var(--color-accent-pressed)"></i><b>accent-pressed</b><span>#5530B8</span></div>
+      <div class="sw"><i style="background:var(--color-accent-tint)"></i><b>accent-tint</b><span>accent 10%</span></div>
+      <div class="sw"><i style="background:var(--gradient-accent)"></i><b>gradient-accent</b><span>#5C33C7→#8C57F2</span></div>
+      <h2>Status</h2>
+      <div class="sw"><i style="background:var(--color-success)"></i><b>success</b><span>#28A745</span></div>
+      <div class="sw"><i style="background:var(--color-destructive)"></i><b>destructive</b><span>#E0352B</span></div>
+      <div class="sw"><i style="background:var(--color-warning)"></i><b>warning</b><span>#F5A200</span></div>
+      <h2>Backgrounds</h2>
+      <div class="sw"><i style="background:var(--color-window-bg)"></i><b>window-bg</b><span>#ECECEC</span></div>
+      <div class="sw"><i style="background:var(--color-content-bg)"></i><b>content-bg</b><span>#FFFFFF</span></div>
+      <div class="sw"><i style="background:var(--color-card-bg)"></i><b>card-bg</b><span>#FFFFFF</span></div>
+      <h2>Text</h2>
+      <div class="sw"><i style="background:var(--color-label)"></i><b>label</b><span>black 85%</span></div>
+      <div class="sw"><i style="background:var(--color-secondary-label)"></i><b>secondary-label</b><span>black 50%</span></div>
+      <div class="sw"><i style="background:var(--color-tertiary-label)"></i><b>tertiary-label</b><span>black 26%</span></div>
+      <div class="sw"><i style="background:var(--color-quaternary-label)"></i><b>quaternary-label</b><span>black 10%</span></div>
+      <h2>Lines &amp; fills</h2>
+      <div class="sw"><i style="background:var(--color-separator)"></i><b>separator</b><span>black 10%</span></div>
+      <div class="sw"><i style="background:var(--color-fill)"></i><b>fill</b><span>black 4.5%</span></div>
+      <div class="sw"><i style="background:var(--color-track)"></i><b>track</b><span>black 8%</span></div>
+    </div>
+
+    <div class="theme-col" data-theme="dark">
+      <h2>Accent — Dark</h2>
+      <div class="sw"><i style="background:var(--color-accent)"></i><b>accent</b><span>#7E58EC</span></div>
+      <div class="sw"><i style="background:var(--color-accent-hover)"></i><b>accent-hover</b><span>#8B69EF</span></div>
+      <div class="sw"><i style="background:var(--color-accent-pressed)"></i><b>accent-pressed</b><span>#7350DC</span></div>
+      <div class="sw"><i style="background:var(--color-accent-tint)"></i><b>accent-tint</b><span>accent 18%</span></div>
+      <div class="sw"><i style="background:var(--gradient-accent)"></i><b>gradient-accent</b><span>#5C33C7→#8C57F2</span></div>
+      <h2>Status</h2>
+      <div class="sw"><i style="background:var(--color-success)"></i><b>success</b><span>#32D74B</span></div>
+      <div class="sw"><i style="background:var(--color-destructive)"></i><b>destructive</b><span>#FF453A</span></div>
+      <div class="sw"><i style="background:var(--color-warning)"></i><b>warning</b><span>#FFB40A</span></div>
+      <h2>Backgrounds</h2>
+      <div class="sw"><i style="background:var(--color-window-bg)"></i><b>window-bg</b><span>#282828</span></div>
+      <div class="sw"><i style="background:var(--color-content-bg)"></i><b>content-bg</b><span>#1E1E1E</span></div>
+      <div class="sw"><i style="background:var(--color-card-bg)"></i><b>card-bg</b><span>#303030</span></div>
+      <h2>Text</h2>
+      <div class="sw"><i style="background:var(--color-label)"></i><b>label</b><span>white 85%</span></div>
+      <div class="sw"><i style="background:var(--color-secondary-label)"></i><b>secondary-label</b><span>white 55%</span></div>
+      <div class="sw"><i style="background:var(--color-tertiary-label)"></i><b>tertiary-label</b><span>white 28%</span></div>
+      <div class="sw"><i style="background:var(--color-quaternary-label)"></i><b>quaternary-label</b><span>white 12%</span></div>
+      <h2>Lines &amp; fills</h2>
+      <div class="sw"><i style="background:var(--color-separator)"></i><b>separator</b><span>white 12%</span></div>
+      <div class="sw"><i style="background:var(--color-fill)"></i><b>fill</b><span>white 6%</span></div>
+      <div class="sw"><i style="background:var(--color-track)"></i><b>track</b><span>white 14%</span></div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Buttons</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:760px;margin:0 auto}
+.ds-head{margin-bottom:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.panel{background:var(--color-card-bg);border-radius:var(--radius-card);box-shadow:var(--shadow-card);overflow:hidden}
+.grid{display:grid;grid-template-columns:130px repeat(4,1fr);align-items:center}
+.grid > div{padding:var(--space-3) var(--space-4);border-top:1px solid var(--color-separator)}
+.grid > .h{border-top:none;padding-bottom:var(--space-2);
+  font-size:var(--font-size-caption);font-weight:var(--weight-semibold);color:var(--color-secondary-label)}
+.rowlabel{font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+.rowlabel b{display:block;color:var(--color-label);font-weight:var(--weight-semibold)}
+
+/* --- macOS-style buttons (never browser defaults) --- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-1);
+  height:22px;padding:0 var(--space-3);border:none;border-radius:var(--radius-button);
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:1;
+  color:var(--color-label);background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default}
+.btn.hover{background:var(--color-btn-bg-hover)}
+.btn.pressed{background:var(--color-btn-bg-active)}
+.btn.prominent{background-color:var(--color-accent);background-image:var(--gradient-btn-sheen);color:var(--color-on-accent)}
+.btn.prominent.hover{background-color:var(--color-accent-hover)}
+.btn.prominent.pressed{background-color:var(--color-accent-pressed);background-image:none}
+.btn.borderless{background:none;box-shadow:none;color:var(--color-accent);padding:0 var(--space-1)}
+.btn.borderless.quiet{color:var(--color-secondary-label)}
+.btn.borderless.hover{background:var(--color-fill);box-shadow:none}
+.btn.borderless.pressed{background:var(--color-track);box-shadow:none}
+.btn.small{height:18px;padding:0 var(--space-2);font-size:var(--font-size-caption)}
+.btn.disabled{opacity:.45}
+.btn.focused{box-shadow:var(--shadow-control), var(--focus-ring)}
+
+.notes{margin-top:var(--space-4);display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+@media (max-width:640px){.grid{grid-template-columns:96px repeat(4,1fr)}.grid > div{padding:var(--space-2)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Buttons</h1>
+    <p>Three styles, mirroring SwiftUI: <span style="font-family:var(--font-family-mono)">.borderedProminent</span>, <span style="font-family:var(--font-family-mono)">.bordered</span>, and borderless. Regular height 22px; small 18px. Radius 6. One prominent button per screen, at most.</p>
+  </div>
+
+  <div class="panel">
+    <div class="grid">
+      <div class="h"></div><div class="h">Normal</div><div class="h">Hover</div><div class="h">Pressed</div><div class="h">Disabled</div>
+
+      <div class="rowlabel"><b>Prominent</b>primary action</div>
+      <div><span class="btn prominent">Run Setup&#8230;</span></div>
+      <div><span class="btn prominent hover">Run Setup&#8230;</span></div>
+      <div><span class="btn prominent pressed">Run Setup&#8230;</span></div>
+      <div><span class="btn prominent disabled">Run Setup&#8230;</span></div>
+
+      <div class="rowlabel"><b>Bordered</b>default</div>
+      <div><span class="btn">Browse&#8230;</span></div>
+      <div><span class="btn hover">Browse&#8230;</span></div>
+      <div><span class="btn pressed">Browse&#8230;</span></div>
+      <div><span class="btn disabled">Add</span></div>
+
+      <div class="rowlabel"><b>Bordered small</b>row actions</div>
+      <div><span class="btn small">Open</span></div>
+      <div><span class="btn small hover">Retry</span></div>
+      <div><span class="btn small pressed">Start Again</span></div>
+      <div><span class="btn small disabled">Open</span></div>
+
+      <div class="rowlabel"><b>Borderless</b>toolbar, links</div>
+      <div><span class="btn borderless quiet">Clear Done</span></div>
+      <div><span class="btn borderless quiet hover">Clear Done</span></div>
+      <div><span class="btn borderless quiet pressed">Clear Done</span></div>
+      <div><span class="btn borderless quiet disabled">Clear Done</span></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <span>&#8226; Keyboard focus adds the accent focus ring: <span class="btn focused" style="margin:0 4px">Check Again</span> — 3.5px, accent at 32%.</span>
+    <span>&#8226; Disabled = 45% opacity, no hover response. &#8220;Add&#8221; is disabled while the link field is empty.</span>
+    <span>&#8226; Destructive actions (&#8220;Cancel All&#8221;, &#8220;Quit Anyway&#8221;) keep the bordered style — red is reserved for status, not buttons, per macOS convention.</span>
+  </div>
+</div>
+</body>
+</html>

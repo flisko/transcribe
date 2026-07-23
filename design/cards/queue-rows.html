@@ -1,0 +1,178 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Queue Rows</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:760px;margin:0 auto}
+.ds-head{margin-bottom:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.board{display:grid;grid-template-columns:92px 1fr;align-items:center;column-gap:var(--space-3)}
+.state{font-size:var(--font-size-caption);line-height:var(--line-height-caption);
+  color:var(--color-tertiary-label);text-align:right;padding-right:var(--space-1)}
+.state b{display:block;color:var(--color-secondary-label);font-weight:var(--weight-semibold)}
+
+.rowbox{background:var(--color-content-bg)}
+.rowbox.first{border-top-left-radius:var(--radius-card);border-top-right-radius:var(--radius-card)}
+.rowbox.last{border-bottom-left-radius:var(--radius-card);border-bottom-right-radius:var(--radius-card);box-shadow:var(--shadow-card)}
+.rowbox ~ .rowbox .row{border-top:1px solid var(--color-separator)}
+
+.row{display:flex;align-items:center;gap:var(--space-3);height:var(--size-row-height);
+  padding:0 var(--space-4)}
+.icon{width:var(--size-row-icon);flex:none;display:flex;justify-content:center;
+  color:var(--color-secondary-label)}
+.mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.title{font-size:var(--font-size-body);line-height:15px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{font-size:var(--font-size-caption);line-height:var(--line-height-caption);
+  color:var(--color-secondary-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trail{flex:none;display:flex;align-items:center;gap:var(--space-2);color:var(--color-secondary-label)}
+
+.bar{height:var(--size-progress-height);border-radius:var(--radius-capsule);
+  background:var(--color-track);overflow:hidden;margin-top:1px}
+.bar > i{display:block;height:100%;border-radius:var(--radius-capsule);background:var(--color-accent)}
+.bar.indet > i{width:40%;animation:indet 1.4s ease-in-out infinite}
+@keyframes indet{0%{transform:translateX(-110%)}100%{transform:translateX(290%)}}
+@media (prefers-reduced-motion: reduce){.bar.indet > i{animation:none;width:100%;opacity:.45}}
+
+.spinner{width:14px;height:14px;border-radius:var(--radius-capsule);
+  border:2px solid var(--color-track);border-top-color:var(--color-secondary-label);
+  animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spinner{animation-duration:2.4s}}
+
+.btn{display:inline-flex;align-items:center;height:18px;padding:0 var(--space-2);border:none;
+  border-radius:var(--radius-button);font-family:var(--font-family);font-size:var(--font-size-caption);
+  line-height:1;color:var(--color-label);background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default}
+.iconbtn{display:inline-flex;color:var(--color-secondary-label)}
+.iconbtn.ghost{opacity:.35}
+
+.notes{margin-top:var(--space-4);display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+@media (max-width:600px){.board{grid-template-columns:1fr}.state{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Queue rows — all 8 states</h1>
+    <p>56px rows: 28px type icon (film / waveform / link), title over an 11px status line, active states add a 4px capsule progress bar. Trailing controls depend on state; hover reveals the quiet ones.</p>
+  </div>
+
+  <div class="board">
+
+    <div class="state"><b>Waiting</b>hover shows &#215;</div>
+    <div class="rowbox first"><div class="row">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 10v4M6.5 7v10M10 4.5v15M13.5 8v8M17 5.5v13M20.5 9.5v5"/></svg></span>
+      <div class="mid">
+        <div class="title">Intervju_baka_Marija.m4a</div>
+        <div class="status">Waiting&#8230;</div>
+      </div>
+      <div class="trail"><span class="iconbtn ghost" title="Remove"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+    </div></div>
+
+    <div class="state"><b>Looking up</b>link items only</div>
+    <div class="rowbox"><div class="row">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+      <div class="mid">
+        <div class="title">youtube.com/watch?v=aY2xkHg1QDM</div>
+        <div class="status">Looking up video&#8230;</div>
+      </div>
+      <div class="trail"><span class="spinner"></span></div>
+    </div></div>
+
+    <div class="state"><b>Downloading</b>determinate 42%</div>
+    <div class="rowbox"><div class="row">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+      <div class="mid">
+        <div class="title">Kako napraviti ajvar — YouTube</div>
+        <div class="status">Downloading — 42%</div>
+        <div class="bar"><i style="width:42%"></i></div>
+      </div>
+      <div class="trail"><span class="iconbtn" title="Cancel"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+    </div></div>
+
+    <div class="state"><b>Preparing</b>ffmpeg, indeterminate</div>
+    <div class="rowbox"><div class="row">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M7 4.5v15M17 4.5v15M2.5 9H7M2.5 15H7M17 9h4.5M17 15h4.5"/></svg></span>
+      <div class="mid">
+        <div class="title">Obiteljski ručak nedjelja.mov</div>
+        <div class="status">Preparing audio&#8230;</div>
+        <div class="bar indet"><i></i></div>
+      </div>
+      <div class="trail"><span class="iconbtn" title="Cancel"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+    </div></div>
+
+    <div class="state"><b>Transcribing</b>37% + smoothed ETA</div>
+    <div class="rowbox"><div class="row">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M7 4.5v15M17 4.5v15M2.5 9H7M2.5 15H7M17 9h4.5M17 15h4.5"/></svg></span>
+      <div class="mid">
+        <div class="title">IMG_2827.mov</div>
+        <div class="status">Transcribing — 37% · about 8 min left</div>
+        <div class="bar"><i style="width:37%"></i></div>
+      </div>
+      <div class="trail"><span class="iconbtn" title="Cancel"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+    </div></div>
+
+    <div class="state"><b>Done</b>Open + &#8943; menu</div>
+    <div class="rowbox"><div class="row">
+      <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="var(--color-success)"/><path d="M7.6 12.4l3 3.1 5.8-6.6" fill="none" stroke="var(--color-on-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <div class="mid">
+        <div class="title">Predavanje – fizika 3.mp3</div>
+        <div class="status">Done in 12 min · transcript saved next to the original</div>
+      </div>
+      <div class="trail">
+        <span class="btn">Open</span>
+        <span class="iconbtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9.25"/><circle cx="7.6" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.4" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></span>
+      </div>
+    </div></div>
+
+    <div class="state"><b>Failed</b>Retry + &#8943; menu</div>
+    <div class="rowbox"><div class="row">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M10.28 3.9 2.33 17.66a2 2 0 0 0 1.73 3.04h15.88a2 2 0 0 0 1.73-3.04L13.72 3.9a2 2 0 0 0-3.44 0Z" fill="var(--color-destructive)"/><path d="M12 9v5" stroke="var(--color-on-accent)" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.1" r="1.15" fill="var(--color-on-accent)"/></svg></span>
+      <div class="mid">
+        <div class="title">Zumba trening za početnike — YouTube</div>
+        <div class="status">Couldn&#8217;t download — the video may be private or removed.</div>
+      </div>
+      <div class="trail">
+        <span class="btn">Retry</span>
+        <span class="iconbtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9.25"/><circle cx="7.6" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.4" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></span>
+      </div>
+    </div></div>
+
+    <div class="state"><b>Canceled</b>kept — visibly reversible</div>
+    <div class="rowbox last"><div class="row">
+      <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9.25"/><path d="M8 12h8" stroke-linecap="round"/></svg></span>
+      <div class="mid">
+        <div class="title">Zoom sastanak 14.7.mov</div>
+        <div class="status">Canceled</div>
+      </div>
+      <div class="trail">
+        <span class="btn">Start Again</span>
+        <span class="iconbtn ghost" title="Remove"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span>
+      </div>
+    </div></div>
+
+  </div>
+
+  <div class="notes">
+    <span>&#8226; Ghosted &#215; buttons appear on hover only; download/transcribe cancels are always visible. Every row&#8217;s context menu mirrors its trailing actions.</span>
+    <span>&#8226; The &#8943; menu on Done: Open Transcript · Open Subtitles (.srt) · Show in Finder · Copy Transcript Text · Transcribe Again · Remove from List. On Failed: Copy Error Details · Remove from List.</span>
+    <span>&#8226; After Copy Transcript Text the status shows &#8220;Transcript copied.&#8221; for 2s. Link items show &#8220;Done in 12 min · saved in Downloads&#8221;.</span>
+    <span>&#8226; VoiceOver reads one combined label: &#8220;IMG_2827 dot MOV, transcribing, 37 percent, about 8 minutes left.&#8221;</span>
+  </div>
+</div>
+</body>
+</html>

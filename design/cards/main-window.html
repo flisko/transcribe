@@ -1,0 +1,200 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Main Window</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+  display:flex;flex-direction:column;align-items:center;gap:var(--space-5);
+}
+.ds-head{max-width:640px;width:100%}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+/* ---------- window ---------- */
+.window{width:560px;max-width:100%;background:var(--color-window-bg);
+  border-radius:var(--radius-card);box-shadow:var(--shadow-popover);
+  display:flex;flex-direction:column;overflow:hidden}
+
+.titlebar{flex:none;display:flex;align-items:center;height:var(--size-titlebar-height);
+  padding:0 var(--space-4);position:relative}
+.lights{display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:var(--radius-capsule)}
+.titlebar .wt{position:absolute;left:0;right:0;text-align:center;
+  font-size:var(--font-size-body);font-weight:var(--weight-semibold);
+  color:var(--color-secondary-label);pointer-events:none}
+.toolbar{margin-left:auto;display:flex;align-items:center;gap:var(--space-3);position:relative}
+.tbtn{font-size:var(--font-size-body);color:var(--color-secondary-label)}
+.toolbar .gear{display:inline-flex;color:var(--color-secondary-label)}
+
+/* ---------- input header ---------- */
+.inputs{flex:none;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+.dropzone{height:var(--size-dropzone-height);border-radius:var(--radius-card);
+  border:1.5px dashed var(--color-tertiary-label);background:var(--color-fill);
+  display:flex;align-items:center;gap:var(--space-3);padding:0 var(--space-4)}
+.dropzone .doc{color:var(--color-secondary-label);flex:none}
+.dropzone .txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dropzone .txt b{font-size:var(--font-size-body);font-weight:var(--weight-regular)}
+.dropzone .txt span{font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+.dropzone .spacer{flex:1}
+
+.linkrow{display:flex;align-items:center;gap:var(--space-2)}
+.field{flex:1;display:flex;align-items:center;height:22px;padding:0 var(--space-2);
+  border-radius:var(--radius-field);background:var(--color-field-bg);box-shadow:var(--shadow-field);
+  font-size:var(--font-size-body);min-width:0}
+.field .ph{color:var(--color-tertiary-label);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+.btn{display:inline-flex;align-items:center;gap:var(--space-1);height:22px;padding:0 var(--space-3);
+  border:none;border-radius:var(--radius-button);font-family:var(--font-family);
+  font-size:var(--font-size-body);line-height:1;color:var(--color-label);
+  background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default;flex:none}
+.btn.small{height:18px;padding:0 var(--space-2);font-size:var(--font-size-caption)}
+.btn.disabled{opacity:.45}
+
+.quick{display:flex;align-items:center;gap:var(--space-4)}
+.qs{display:inline-flex;align-items:center;gap:var(--space-1);
+  font-size:var(--font-size-callout);color:var(--color-secondary-label)}
+.qs .chev{display:inline-flex}
+
+.divider{flex:none;height:1px;background:var(--color-separator)}
+
+/* ---------- queue ---------- */
+.queue{flex:1;min-height:0;background:var(--color-content-bg)}
+.row{display:flex;align-items:center;gap:var(--space-3);height:var(--size-row-height);
+  padding:0 var(--space-4)}
+.row + .row{border-top:1px solid var(--color-separator)}
+.icon{width:var(--size-row-icon);flex:none;display:flex;justify-content:center;
+  color:var(--color-secondary-label)}
+.mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.title{font-size:var(--font-size-body);line-height:15px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{font-size:var(--font-size-caption);line-height:var(--line-height-caption);
+  color:var(--color-secondary-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trail{flex:none;display:flex;align-items:center;gap:var(--space-2);color:var(--color-secondary-label)}
+.bar{height:var(--size-progress-height);border-radius:var(--radius-capsule);
+  background:var(--color-track);overflow:hidden;margin-top:1px}
+.bar > i{display:block;height:100%;border-radius:var(--radius-capsule);background:var(--color-accent)}
+.iconbtn{display:inline-flex;color:var(--color-secondary-label)}
+.iconbtn.ghost{opacity:.35}
+
+/* ---------- footer ---------- */
+.footer{flex:none;display:flex;align-items:center;gap:var(--space-3);
+  height:var(--size-footer-height);padding:0 var(--space-4);
+  border-top:1px solid var(--color-separator);background:var(--color-window-bg)}
+.footer .agg{flex:1;font-size:var(--font-size-callout);color:var(--color-secondary-label);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.notes{max-width:640px;width:100%;display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+</style>
+</head>
+<body>
+  <div class="ds-head">
+    <h1>Main window — working state</h1>
+    <p>560&#215;640 default. Input header always visible on top; the queue grows below it; footer aggregates the whole queue. One transcription lane and one download lane run in parallel.</p>
+  </div>
+
+  <div class="window">
+
+    <div class="titlebar">
+      <span class="wt">Transcribe</span>
+      <div class="lights">
+        <i style="background:var(--color-traffic-close)"></i>
+        <i style="background:var(--color-traffic-min)"></i>
+        <i style="background:var(--color-traffic-zoom)"></i>
+      </div>
+      <div class="toolbar">
+        <span class="tbtn" title="Remove finished items from the list">Clear Done</span>
+        <span class="gear" title="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+      </div>
+    </div>
+
+    <div class="inputs">
+      <div class="dropzone">
+        <svg class="doc" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M12 11v6.5M9 15l3 2.5L15 15"/></svg>
+        <div class="txt">
+          <b>Drop audio or video files here</b>
+          <span>MP3, MP4, MOV, M4A and most other formats</span>
+        </div>
+        <div class="spacer"></div>
+        <span class="btn">Browse&#8230;</span>
+      </div>
+
+      <div class="linkrow">
+        <div class="field"><span class="ph">Paste a video link — YouTube, TikTok, Instagram&#8230;</span></div>
+        <span class="btn disabled">Add</span>
+      </div>
+
+      <div class="quick">
+        <span class="qs">Language: Croatian <span class="chev"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg></span></span>
+        <span class="qs">Model: Best quality <span class="chev"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg></span></span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="queue">
+      <div class="row">
+        <span class="icon"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="var(--color-success)"/><path d="M7.6 12.4l3 3.1 5.8-6.6" fill="none" stroke="var(--color-on-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <div class="mid">
+          <div class="title">Predavanje – fizika 3.mp3</div>
+          <div class="status">Done in 12 min · transcript saved next to the original</div>
+        </div>
+        <div class="trail">
+          <span class="btn small">Open</span>
+          <span class="iconbtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9.25"/><circle cx="7.6" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.4" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></span>
+        </div>
+      </div>
+
+      <div class="row">
+        <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M7 4.5v15M17 4.5v15M2.5 9H7M2.5 15H7M17 9h4.5M17 15h4.5"/></svg></span>
+        <div class="mid">
+          <div class="title">IMG_2827.mov</div>
+          <div class="status">Transcribing — 37% · about 8 min left</div>
+          <div class="bar"><i style="width:37%"></i></div>
+        </div>
+        <div class="trail"><span class="iconbtn" title="Cancel"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+      </div>
+
+      <div class="row">
+        <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+        <div class="mid">
+          <div class="title">Kako napraviti ajvar — YouTube</div>
+          <div class="status">Downloading — 42%</div>
+          <div class="bar"><i style="width:42%"></i></div>
+        </div>
+        <div class="trail"><span class="iconbtn" title="Cancel"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+      </div>
+
+      <div class="row">
+        <span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 10v4M6.5 7v10M10 4.5v15M13.5 8v8M17 5.5v13M20.5 9.5v5"/></svg></span>
+        <div class="mid">
+          <div class="title">Intervju_baka_Marija.m4a</div>
+          <div class="status">Waiting&#8230;</div>
+        </div>
+        <div class="trail"><span class="iconbtn ghost" title="Remove"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8.8 8.8l6.4 6.4M15.2 8.8l-6.4 6.4" stroke="var(--color-content-bg)" stroke-width="2" stroke-linecap="round"/></svg></span></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="agg">Transcribing &#8220;IMG_2827.mov&#8221; — 2 of 4 · about 14 min left</span>
+      <span class="btn">Cancel All</span>
+    </div>
+
+  </div>
+
+  <div class="notes">
+    <span>&#8226; Toolbar: &#8220;Clear Done&#8221; appears only when a finished row exists; the gear opens Settings.</span>
+    <span>&#8226; Quick settings are borderless Callout controls — the user must see the language before dropping a file, since items auto-start.</span>
+    <span>&#8226; &#8220;Cancel All&#8221; shows only while anything is waiting, downloading, or transcribing. Dock badge mirrors the remaining count.</span>
+  </div>
+</body>
+</html>

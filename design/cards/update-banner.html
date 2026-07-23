@@ -1,0 +1,76 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Update Banner</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.banner{display:flex;align-items:center;gap:var(--space-3);
+  background:var(--color-accent-tint);border-bottom:1px solid var(--color-separator);
+  padding:var(--space-2) var(--space-4);min-height:36px}
+.banner .msg{flex:1;font-size:var(--font-size-body)}
+.btn{display:inline-flex;align-items:center;height:18px;padding:0 var(--space-2);border:none;
+  border-radius:var(--radius-button);font-family:var(--font-family);font-size:var(--font-size-caption);
+  line-height:1;color:var(--color-label);background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default;flex:none}
+.dismiss{display:inline-flex;color:var(--color-secondary-label);flex:none}
+
+/* in-context frame: banner sits under the title bar */
+.frame{background:var(--color-window-bg);border-radius:var(--radius-card);
+  box-shadow:var(--shadow-card);overflow:hidden}
+.titlebar{display:flex;align-items:center;height:var(--size-titlebar-height);
+  padding:0 var(--space-4);border-bottom:1px solid var(--color-separator);position:relative}
+.lights{display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:var(--radius-capsule)}
+.titlebar .wt{position:absolute;left:0;right:0;text-align:center;
+  font-size:var(--font-size-body);font-weight:var(--weight-semibold);color:var(--color-secondary-label);
+  pointer-events:none}
+.frame .below{height:56px;background:var(--color-content-bg)}
+
+.notes{display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Update banner</h1>
+    <p>Non-modal strip under the title bar when a newer GitHub release exists. Shown once per launch; &#8220;&#215;&#8221; dismisses for this launch. No auto-download — Download opens the release page in the browser.</p>
+  </div>
+
+  <div class="frame">
+    <div class="titlebar">
+      <span class="wt">Transcribe</span>
+      <div class="lights">
+        <i style="background:var(--color-traffic-close)"></i>
+        <i style="background:var(--color-traffic-min)"></i>
+        <i style="background:var(--color-traffic-zoom)"></i>
+      </div>
+    </div>
+    <div class="banner">
+      <span class="msg">Version 1.0.42 is available.</span>
+      <span class="btn">Download</span>
+      <span class="dismiss" title="Dismiss"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+    </div>
+    <div class="below"></div>
+  </div>
+
+  <div class="notes">
+    <span>&#8226; Background is the 10% accent tint — informative, not alarming. Never a modal dialog.</span>
+    <span>&#8226; Check runs at launch, async with a 5s timeout, silent on any failure; the app never blocks on it.</span>
+  </div>
+</div>
+</body>
+</html>

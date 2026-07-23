@@ -1,0 +1,95 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Link Input</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+.label{font-size:var(--font-size-caption);font-weight:var(--weight-semibold);
+  color:var(--color-secondary-label);text-transform:uppercase;letter-spacing:.06em;
+  margin-bottom:var(--space-2)}
+
+.linkrow{display:flex;align-items:center;gap:var(--space-2)}
+.field{flex:1;display:flex;align-items:center;gap:var(--space-1);height:22px;padding:0 var(--space-2);
+  border-radius:var(--radius-field);background:var(--color-field-bg);box-shadow:var(--shadow-field);
+  font-size:var(--font-size-body);min-width:0}
+.field .ph{color:var(--color-tertiary-label);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.field .val{color:var(--color-label);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.field.focused{box-shadow:var(--shadow-field), var(--focus-ring)}
+.field.disabled{opacity:.55}
+.caret{width:1px;height:14px;background:var(--color-accent);flex:none}
+
+.btn{display:inline-flex;align-items:center;height:22px;padding:0 var(--space-3);border:none;
+  border-radius:var(--radius-button);font-family:var(--font-family);font-size:var(--font-size-body);
+  line-height:1;color:var(--color-label);background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default;flex:none}
+.btn.disabled{opacity:.45}
+
+.error{margin-top:var(--space-1);font-size:var(--font-size-caption);
+  line-height:var(--line-height-caption);color:var(--color-destructive)}
+.hint{margin-top:var(--space-1);font-size:var(--font-size-caption);
+  line-height:var(--line-height-caption);color:var(--color-secondary-label)}
+
+.notes{display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Link input row</h1>
+    <p>Below the drop zone. &#8984;L focuses the field; Return triggers Add. Add stays disabled while the field is empty.</p>
+  </div>
+
+  <div>
+    <div class="label">Empty — Add disabled</div>
+    <div class="linkrow">
+      <div class="field"><span class="ph">Paste a video link — YouTube, TikTok, Instagram&#8230;</span></div>
+      <span class="btn disabled">Add</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">Focused, filled — Add enabled</div>
+    <div class="linkrow">
+      <div class="field focused"><span class="val">https://www.youtube.com/watch?v=aY2xkHg1QDM</span><i class="caret"></i></div>
+      <span class="btn">Add</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="label">Invalid link — inline caption, clears on edit</div>
+    <div class="linkrow">
+      <div class="field focused"><span class="val">kako napraviti ajvar recept</span><i class="caret"></i></div>
+      <span class="btn">Add</span>
+    </div>
+    <div class="error">That doesn&#8217;t look like a link. Copy the video&#8217;s address and paste it here.</div>
+  </div>
+
+  <div>
+    <div class="label">Links limited — yt-dlp missing, files still work</div>
+    <div class="linkrow">
+      <div class="field disabled"><span class="ph">Video links need one more component</span></div>
+      <span class="btn">Install&#8230;</span>
+    </div>
+    <div class="hint">Everything else works — this only affects video links.</div>
+  </div>
+
+  <div class="notes">
+    <span>&#8226; After &#8220;Install&#8230;&#8221; is clicked the button becomes &#8220;Check Again&#8221;; the state clears itself when the app re-checks on activation.</span>
+    <span>&#8226; The error caption uses the destructive color — the only red text in the app outside failed-row icons.</span>
+  </div>
+</div>
+</body>
+</html>

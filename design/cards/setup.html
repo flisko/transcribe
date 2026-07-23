@@ -1,0 +1,107 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — One-time Setup</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.stage{background:var(--color-content-bg);border-radius:var(--radius-card);
+  box-shadow:var(--shadow-card);display:flex;align-items:center;justify-content:center;
+  padding:var(--space-8) var(--space-6)}
+.setup{display:flex;flex-direction:column;align-items:center;gap:var(--space-3);
+  text-align:center;max-width:420px}
+.setup .glyph{color:var(--color-secondary-label)}
+.setup h2{font-size:var(--font-size-title2);line-height:var(--line-height-title2);
+  font-weight:var(--weight-semibold)}
+.setup > p{font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-secondary-label)}
+
+.checklist{width:100%;margin-top:var(--space-1);background:var(--color-card-bg);
+  border-radius:var(--radius-card);box-shadow:var(--shadow-card);text-align:left;overflow:hidden}
+.check{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);
+  min-height:36px}
+.check + .check{border-top:1px solid var(--color-separator)}
+.check svg{flex:none}
+.check .name{flex:1;font-size:var(--font-size-body)}
+.check .name small{display:block;font-size:var(--font-size-caption);
+  line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+.check .st{flex:none;font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+.check .st.ok{color:var(--color-success)}
+
+.btns{display:flex;gap:var(--space-2);margin-top:var(--space-1)}
+.btn{display:inline-flex;align-items:center;height:22px;padding:0 var(--space-3);border:none;
+  border-radius:var(--radius-button);font-family:var(--font-family);font-size:var(--font-size-body);
+  line-height:1;color:var(--color-label);background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default}
+.btn.prominent{background-color:var(--color-accent);background-image:var(--gradient-btn-sheen);
+  color:var(--color-on-accent)}
+.foot{font-size:var(--font-size-caption);line-height:var(--line-height-caption);
+  color:var(--color-secondary-label);max-width:38ch}
+
+.notes{display:flex;flex-direction:column;gap:var(--space-1);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>One-time setup</h1>
+    <p>Blocking state when whisper, ffmpeg, or the &#8220;Best quality&#8221; model is missing. Replaces the queue area; the input header dims. Re-checks automatically every time the app is activated.</p>
+  </div>
+
+  <div class="stage">
+    <div class="setup">
+      <svg class="glyph" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a1.8 1.8 0 0 0-.9-1.56l-7.2-4.1a1.8 1.8 0 0 0-1.8 0l-7.2 4.1A1.8 1.8 0 0 0 3 8v8a1.8 1.8 0 0 0 .9 1.56l7.2 4.1a1.8 1.8 0 0 0 1.8 0l7.2-4.1A1.8 1.8 0 0 0 21 16z"/><path d="M3.3 7.1 12 12l8.7-4.9M12 22V12"/><path d="M7.6 4.6l8.9 5.1"/></svg>
+      <h2>One-time setup</h2>
+      <p>Transcribe needs a few free components before it can start. Everything runs on your Mac — nothing is uploaded.</p>
+
+      <div class="checklist">
+        <div class="check">
+          <svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="var(--color-success)"/><path d="M7.6 12.4l3 3.1 5.8-6.6" fill="none" stroke="var(--color-on-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="name">Speech recognition (whisper)</span>
+          <span class="st ok">Installed</span>
+        </div>
+        <div class="check">
+          <svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="var(--color-success)"/><path d="M7.6 12.4l3 3.1 5.8-6.6" fill="none" stroke="var(--color-on-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="name">Audio converter (ffmpeg)</span>
+          <span class="st ok">Installed</span>
+        </div>
+        <div class="check">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-tertiary-label)" stroke-width="1.6"><circle cx="12" cy="12" r="9.2"/></svg>
+          <span class="name">Language models (4.6 GB download)</span>
+          <span class="st">Not installed</span>
+        </div>
+        <div class="check">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-tertiary-label)" stroke-width="1.6"><circle cx="12" cy="12" r="9.2"/></svg>
+          <span class="name">Link downloader (yt-dlp) — optional, only needed for video links</span>
+          <span class="st">Not installed</span>
+        </div>
+      </div>
+
+      <div class="btns">
+        <span class="btn prominent">Run Setup&#8230;</span>
+        <span class="btn">Check Again</span>
+      </div>
+      <p class="foot">Setup opens the Terminal and takes a few minutes, mostly downloading. It&#8217;s safe to run more than once.</p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <span>&#8226; Engine-missing special case swaps the checklist for: &#8220;Transcribe can&#8217;t find its engine. Keep Transcribe.app inside the Transcribe folder, next to &#8220;bin&#8221; and &#8220;models&#8221;, then click Check Again.&#8221;</span>
+    <span>&#8226; During this state, drop attempts show the overlay with &#8220;Finish setup to start transcribing&#8221;.</span>
+  </div>
+</div>
+</body>
+</html>

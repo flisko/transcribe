@@ -1,0 +1,110 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcribe — Progress &amp; ETA</title>
+<link rel="stylesheet" href="../tokens.css">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font-family);font-size:var(--font-size-body);line-height:var(--line-height-body);
+  color:var(--color-label);background:var(--color-window-bg);
+  -webkit-font-smoothing:antialiased;padding:var(--space-6);
+}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:var(--space-5)}
+.ds-head h1{font-size:var(--font-size-title3);line-height:var(--line-height-title3);font-weight:var(--weight-semibold)}
+.ds-head p{margin-top:var(--space-1);font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.panel{background:var(--color-card-bg);border-radius:var(--radius-card);box-shadow:var(--shadow-card);
+  padding:var(--space-4)}
+.panel h2{font-size:var(--font-size-caption);font-weight:var(--weight-semibold);text-transform:uppercase;
+  letter-spacing:.06em;color:var(--color-secondary-label);margin-bottom:var(--space-3)}
+
+.bar{height:var(--size-progress-height);border-radius:var(--radius-capsule);
+  background:var(--color-track);overflow:hidden}
+.bar > i{display:block;height:100%;border-radius:var(--radius-capsule);background:var(--color-accent)}
+.bar.indet > i{width:40%;animation:indet 1.4s ease-in-out infinite}
+@keyframes indet{0%{transform:translateX(-110%)}100%{transform:translateX(290%)}}
+@media (prefers-reduced-motion: reduce){.bar.indet > i{animation:none;width:100%;opacity:.45}}
+
+.anat{position:relative;padding:var(--space-5) 0 var(--space-6)}
+.callouts{display:flex;justify-content:space-between;margin-top:var(--space-2)}
+.co{font-size:var(--font-size-caption);line-height:var(--line-height-caption);color:var(--color-tertiary-label)}
+.co b{color:var(--color-secondary-label);font-weight:var(--weight-semibold)}
+
+.demo{display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:var(--space-4)}
+.demo:last-child{margin-bottom:0}
+.demo .cap{font-size:var(--font-size-caption);color:var(--color-secondary-label)}
+
+.etarules{list-style:none;display:flex;flex-direction:column}
+.etarules li{display:grid;grid-template-columns:1fr 1.3fr;gap:var(--space-4);
+  padding:var(--space-2) 0;border-top:1px solid var(--color-separator);
+  font-size:var(--font-size-caption);line-height:var(--line-height-caption)}
+.etarules li:first-child{border-top:none}
+.etarules .txt{color:var(--color-label)}
+.etarules .why{color:var(--color-tertiary-label)}
+
+.footerline{display:flex;align-items:center;gap:var(--space-3);height:var(--size-footer-height);
+  padding:0 var(--space-4);background:var(--color-window-bg);border-top:1px solid var(--color-separator)}
+.footerline span{flex:1;font-size:var(--font-size-callout);color:var(--color-secondary-label);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{display:inline-flex;align-items:center;height:22px;padding:0 var(--space-3);border:none;
+  border-radius:var(--radius-button);font-family:var(--font-family);font-size:var(--font-size-body);
+  line-height:1;color:var(--color-label);background:var(--color-btn-bg);box-shadow:var(--shadow-control);
+  white-space:nowrap;user-select:none;cursor:default;flex:none}
+.footwrap{border-radius:var(--radius-card);overflow:hidden;box-shadow:var(--shadow-card)}
+.footwrap .footerline + .footerline{border-top:1px solid var(--color-separator)}
+.footwrap .footerline:first-child{border-top:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ds-head">
+    <h1>Progress &amp; ETA</h1>
+    <p>One bar style everywhere: 4px capsule, track in the fill hierarchy, accent fill. No percentages inside the bar — numbers live in the status text.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Anatomy</h2>
+    <div class="anat">
+      <div class="bar" style="max-width:420px"><i style="width:62%"></i></div>
+      <div class="callouts" style="max-width:420px">
+        <div class="co"><b>Fill</b> — accent, capsule ends</div>
+        <div class="co"><b>Track</b> — track token, 4px tall</div>
+      </div>
+    </div>
+    <div class="demo">
+      <div class="cap">Determinate — Transcribing — 37% · about 8 min left</div>
+      <div class="bar"><i style="width:37%"></i></div>
+    </div>
+    <div class="demo">
+      <div class="cap">Indeterminate — Preparing audio&#8230; / Looking up video&#8230;</div>
+      <div class="bar indet"><i></i></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>ETA text rules</h2>
+    <ul class="etarules">
+      <li><span class="txt">&#8220;Transcribing — 5% · estimating time&#8230;&#8221;</span><span class="why">Before the smoothed rate stabilizes — never show a wild first guess.</span></li>
+      <li><span class="txt">&#8220;Transcribing — 37% · about 8 min left&#8221;</span><span class="why">Coarse rounding (&#8220;about&#8221;), from an exponentially-smoothed percent-per-second rate.</span></li>
+      <li><span class="txt">&#8220;about 1 min left&#8221;</span><span class="why">Minutes only — seconds imply false precision.</span></li>
+      <li><span class="txt">&#8220;less than a minute left&#8221;</span><span class="why">The final stretch; never counts down to zero.</span></li>
+      <li><span class="txt">Monotone display</span><span class="why">The shown ETA never jumps upward by more than one step between refreshes — a thrashing ETA reads as broken.</span></li>
+    </ul>
+  </div>
+
+  <div class="panel" style="padding:0;overflow:hidden">
+    <h2 style="padding:var(--space-4) var(--space-4) 0">Footer aggregate line</h2>
+    <div class="footwrap" style="margin-top:var(--space-3)">
+      <div class="footerline"><span>Transcribing &#8220;IMG_2827.mov&#8221; — 2 of 5 · about 14 min left</span><span class="btn" style="flex:none">Cancel All</span></div>
+      <div class="footerline"><span>Downloading &#8220;How to make ajvar&#8221; — 1 of 3</span><span class="btn" style="flex:none">Cancel All</span></div>
+      <div class="footerline"><span>All done — 5 transcripts ready</span></div>
+      <div class="footerline"><span>Finished — 4 done, 1 failed</span></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
