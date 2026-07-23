@@ -174,7 +174,7 @@ test('outputPaths stems from the last path component only', () => {
   const input = path.join(path.sep + 'tmp', 'videos v2.0', 'clip.mov');
   const o = outputPaths(input);
   assert.strictEqual(o.txt, path.join(path.sep + 'tmp', 'videos v2.0', 'clip.txt'));
-  assert.strictEqual(o.srt, '/tmp/videos v2.0/clip.srt');
+  assert.strictEqual(o.srt, path.join(path.sep + 'tmp', 'videos v2.0', 'clip.srt'));
 });
 
 test('file flow: add -> waiting -> preparing -> transcribing -> done; capture-at-start', async (t) => {
