@@ -82,15 +82,16 @@ test('win32: emoji title never reaches whisper argv', () => {
   assert.equal(plan.renames[0].to, plan.txt);
 });
 
-// Documents the residual: a non-ASCII Windows *username* leaks into workDir (and
-// the model path), so ofBase's DIRECTORY is still non-ASCII — but the -of LEAF
-// is always ASCII 'out', so the title-derived corruption (the guaranteed-broken
-// common case) is gone regardless. This asserts the boundary of the fix (the
-// pure mapping); it does NOT assert the run succeeds. MEASURED on real Windows
-// (ACP cp1250): with the wav/model under a non-ASCII-username directory whisper
-// still fails — cp1250-representable diacritics (C:\Users\Žiga\…) crash it
-// (0xC0000409), emoji/CJK give "input file not found". See engine.js RESIDUAL.
-test('win32: non-ASCII username is the documented residual (leaf still ASCII "out")', () => {
+// A non-ASCII Windows *username* leaks into workDir, so ofBase's DIRECTORY here
+// is still non-ASCII — but the -of LEAF is always ASCII 'out', which is all this
+// pure mapping is responsible for (the title-derived corruption is gone). The
+// non-ASCII-DIRECTORY problem (measured on real Windows to CRASH whisper —
+// 0xC0000409 — even for cp1250-representable C:\Users\Žiga\…) is fixed at the RUN
+// level, not here: queue.js chooseJobBase gives an ASCII workDir and the engine
+// hardlinks a non-ASCII model into it (see win-username-codepage.test.js). So this
+// asserts only the boundary of whisperOutputPlan, which by design leaves the
+// workDir untouched.
+test('win32: non-ASCII username — whisperOutputPlan leaves workDir as-is (leaf still ASCII "out")', () => {
   const input = 'C:\\Users\\Žiga\\Downloads\\Čćžšđ [id].mp4';
   const workDir = 'C:\\Users\\Žiga\\AppData\\Local\\Temp\\job';
   const plan = whisperOutputPlan({ platform: 'win32', input, workDir });

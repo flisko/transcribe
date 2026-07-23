@@ -17,6 +17,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 
 // Spec-pinned durations (ms): dup-flash 0.4 s, copied 2 s, action note 4 s,
 // lookup watchdog 60 s. Tests inject smaller values.
@@ -41,6 +42,63 @@ function outputPaths(input) {
   let stem = ext ? base.slice(0, -ext.length) : base;
   if (!stem) stem = base;
   return { txt: path.join(dir, stem + '.txt'), srt: path.join(dir, stem + '.srt') };
+}
+
+// whisper-cli.exe reads argv (the -f wav and -of output it gets from the job
+// workDir) through the ANSI codepage, so a scratch dir under a non-ASCII %TEMP%
+// — a non-ASCII Windows profile like C:\Users\Žiga\AppData\Local\Temp — makes it
+// crash or lose the wav (measured on real Windows). Root the job dirs at an ASCII
+// base in that case: %ProgramData% is ASCII and standard users may create subdirs
+// there; namespace by an ASCII hash of the username so co-existing users neither
+// collide nor sweep each other's job dirs. ASCII profiles (the vast majority, and
+// every non-Windows host) keep the exact per-user %TEMP% location as before.
+// Pure + fully injectable so the win/mac × ascii/non-ascii matrix unit-tests from
+// any host.
+function chooseJobBase({ platform, tmpdir, programData, username }) {
+  const NAME = 'com.flisko.transcribe';
+  const isAscii = (s) => /^[\x00-\x7F]*$/.test(String(s == null ? '' : s));
+  const tmpBase = path.join(String(tmpdir == null ? '' : tmpdir), NAME);
+  if (platform !== 'win32' || isAscii(tmpdir)) return tmpBase;
+  if (programData && isAscii(programData)) {
+    const tag = crypto.createHash('sha256').update(String(username == null ? '' : username)).digest('hex').slice(0, 12);
+    return path.join(String(programData), NAME, tag);
+  }
+  return tmpBase; // no ASCII base available — unchanged (still hard for non-ASCII users, but no regression)
+}
+
+// %ProgramData% is world-readable by default (an inheritable BUILTIN\Users:(RX)
+// ACE), so a job tree there would let every local account read one user's staged
+// audio.wav and transcript — a privacy regression from the per-user %TEMP% it
+// replaces. Lock the base to the current user + SYSTEM + Administrators (by SID,
+// which is ASCII and locale-independent — a non-ASCII account NAME can't be
+// resolved reliably), stripping the inherited Users read. Best-effort; the caller
+// falls back to %TEMP% when this can't be done rather than write world-readable
+// private data. win32-only; a no-op everywhere else.
+function hardenWindowsDir(dir) {
+  if (process.platform !== 'win32') return false;
+  // ABSOLUTE System32 paths, never the bare names: on a machine where another
+  // 'whoami'/'icacls' shadows System32 on PATH (Git for Windows ships a GNU
+  // whoami, for one) the bare name resolves to the wrong tool and hardening
+  // silently fails — the same footgun setup.ps1 avoids for curl.exe.
+  const sys32 = path.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32');
+  const whoamiExe = path.join(sys32, 'whoami.exe');
+  const icaclsExe = path.join(sys32, 'icacls.exe');
+  let sid = '';
+  try {
+    const out = execFileSync(whoamiExe, ['/user', '/fo', 'csv', '/nh'], { windowsHide: true, timeout: 8000 }).toString();
+    const m = out.match(/S-1-[0-9-]+/);
+    if (m) sid = m[0];
+  } catch (_) { /* whoami unavailable — can't harden */ }
+  if (!sid) return false;
+  try {
+    execFileSync(icaclsExe, [
+      dir, '/inheritance:r',
+      '/grant:r', `*${sid}:(OI)(CI)F`,
+      '/grant:r', '*S-1-5-18:(OI)(CI)F',     // SYSTEM
+      '/grant:r', '*S-1-5-32-544:(OI)(CI)F', // Administrators
+    ], { windowsHide: true, timeout: 15000, stdio: 'ignore' });
+    return true;
+  } catch (_) { return false; }
 }
 
 // MARK: System adapter
@@ -161,7 +219,36 @@ function createQueue(opts) {
 
   const listeners = [];
 
-  const jobBase = path.join(os.tmpdir(), 'com.flisko.transcribe');
+  // ASCII scratch root when the Windows profile name is non-ASCII (see
+  // chooseJobBase). If the chosen ASCII base can't be created (locked-down
+  // %ProgramData%), fall back to %TEMP% — no worse than before.
+  const tmpBase = path.join(os.tmpdir(), 'com.flisko.transcribe');
+  let username = '';
+  try { username = os.userInfo().username; } catch { /* keep '' */ }
+  let jobBase = chooseJobBase({
+    platform: process.platform,
+    tmpdir: os.tmpdir(),
+    programData: process.env.ProgramData,
+    username,
+  });
+  if (jobBase !== tmpBase) {
+    // The ASCII %ProgramData% base is world-readable and never OS-reclaimed by
+    // default, so create it AND lock it to this user; if either step fails, fall
+    // back to the private per-user %TEMP% base rather than leave scratch exposed.
+    let ok = false;
+    try { fs.mkdirSync(jobBase, { recursive: true }); ok = hardenWindowsDir(jobBase); } catch { ok = false; }
+    if (!ok) jobBase = tmpBase;
+  }
+  // Sweep job dirs orphaned by a prior crash / force-kill / OS reboot, when
+  // neither cleanupJob nor the quit-time rmrf(jobBase) got to run. Safe: the app
+  // is single-instance (requestSingleInstanceLock), so nothing here is live, and
+  // job dirs hold only disposable scratch (audio.wav, out.*, a model hardlink — no
+  // resume data). Essential for the %ProgramData% base, which the OS never
+  // reclaims; a bonus for %TEMP%. Run SYNCHRONOUSLY at construction — before any
+  // makeJobDir can add a live dir (an open-with launch calls addFiles inside the
+  // same whenReady tick) — using the hoisted rmrf. Best-effort; a locked leftover
+  // just waits for the next run.
+  try { for (const n of fs.readdirSync(jobBase)) rmrf(path.join(jobBase, n)); } catch { /* base absent — nothing to sweep */ }
 
   function byId(id) { return items.find((it) => it.id === id) || null; }
   function indexOf(id) { return items.findIndex((it) => it.id === id); }
@@ -1117,4 +1204,4 @@ function createQueue(opts) {
   };
 }
 
-module.exports = { createQueue, createSystemAdapter, outputPaths, DELAYS };
+module.exports = { createQueue, createSystemAdapter, outputPaths, chooseJobBase, DELAYS };

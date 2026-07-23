@@ -103,6 +103,13 @@ function sanitizeName(name) {
   return String(name || '').replace(/[\t\n\r]/g, ' ');
 }
 
+// A path whisper-cli.exe can pass through its ANSI-codepage argv intact iff it is
+// pure ASCII (a non-ASCII byte outside — or even inside — the active codepage
+// makes whisper crash or lose the file; see the win path codepage note below).
+function isAsciiPath(p) {
+  return /^[\x00-\x7F]*$/.test(String(p == null ? '' : p));
+}
+
 function spawnTool(bin, args) {
   const child = spawn(bin, args, {
     shell: false,
@@ -207,24 +214,23 @@ function probeDeps(opts) {
 // Unicode-safe (libuv calls the wide Win32 APIs). darwin is untouched: -of
 // points straight at the destination stem and nothing is renamed.
 //
-// RESIDUAL (known, unfixed — worse than a stray '?'): the model path (-m) and
-// wav path (-f) are still handed to whisper verbatim. Their leaves are ASCII
-// ('audio.wav', 'ggml-*.bin') and -of's leaf is ASCII 'out', so the ONLY way a
-// non-ASCII byte still reaches whisper is through their *directory* — i.e. a
-// non-ASCII Windows user-profile name (workDir lives under %TEMP% =
-// C:\Users\<name>\AppData\Local\Temp; the model under the app folder, often
-// under the profile too). MEASURED on real Windows (ACP cp1250): a non-ASCII
-// username breaks EVERY transcription, and it is NOT limited to chars outside
-// the codepage — even cp1250-REPRESENTABLE diacritics (C:\Users\Žiga\…) make
-// whisper-cli crash outright (STATUS_STACK_BUFFER_OVERRUN 0xC0000409), while
-// emoji/CJK degrade to "input file not found". So the overwhelmingly common
-// ASCII-username install is fully fixed by the -of rerouting above, but any
-// non-ASCII username (common in the primary HR/SI audience) is a hard failure.
-// A proper fix stages the wav/model under an ASCII base independent of the
-// profile (e.g. a %ProgramData% job dir + a same-volume hardlink of the model),
-// win32-guarded — deferred because it needs multi-user + cross-volume + fallback
-// handling and its own tests. GetShortPathNameW (8.3) is not usable: no Node
-// binding without a native addon (the codebase is pure JS, no bundler).
+// NON-ASCII USERNAME (the -m/-f/-of *directory* case, now handled): -of's leaf is
+// ASCII 'out', but its directory (workDir under %TEMP% = C:\Users\<name>\…) and
+// the -m model directory can still carry a non-ASCII Windows profile name. MEASURED
+// on real Windows (ACP cp1250): this broke EVERY transcription, and NOT only for
+// chars outside the codepage — even cp1250-REPRESENTABLE diacritics (C:\Users\Žiga\…)
+// crashed whisper-cli outright (STATUS_STACK_BUFFER_OVERRUN 0xC0000409); emoji/CJK
+// degraded to "input file not found". Two coordinated fixes make -f/-of/-m ASCII:
+//   (1) queue.js chooseJobBase roots the workDir at an ASCII %ProgramData% base
+//       (per-user hashed) when %TEMP% is non-ASCII, so the wav (-f) and out (-of)
+//       are ASCII; and
+//   (2) transcribe() below hardlinks a non-ASCII model into that ASCII workDir and
+//       passes the ASCII link as -m.
+// Both win32-only and no-ops for ASCII usernames. Verified end-to-end on real
+// Windows. Remaining residual (documented, narrow): if the model lives on a
+// DIFFERENT volume than %ProgramData% the hardlink can't be made and -m falls back
+// to the real path — no worse than before. GetShortPathNameW (8.3) was rejected:
+// no Node binding without a native addon (the codebase is pure JS, no bundler).
 //
 // Pure + platform-injectable so the mapping is unit-testable from a mac (uses
 // the injected platform's path flavor, which equals the ambient one on the real
@@ -374,6 +380,26 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
     try { fs.rmSync(stale, { force: true }); } catch (_) { /* locked prior output — deal with it at move time */ }
   }
 
+  // win32 codepage safety for -m (the last of whisper's three path args): the wav
+  // (-f) and out (-of) already live in the workDir, which the queue roots at an
+  // ASCII base when the Windows profile name is non-ASCII (chooseJobBase). The
+  // model path can still be non-ASCII on its own — the app folder unzipped under
+  // C:\Users\<non-ascii>\… — and whisper's ANSI argv then crashes on it. Hardlink
+  // the model into the ASCII workDir (instant, no data copy on the same volume)
+  // and hand whisper that ASCII path. Only when the workDir really is ASCII (else
+  // the link is no better); cross-volume / perms failures fall back to the real
+  // path — no worse than before. The link sits in workDir, so the queue's
+  // teardown reclaims it with everything else. darwin: IS_WIN gate skips this.
+  let modelForWhisper = modelFile;
+  let modelLink = null;
+  if (IS_WIN && !isAsciiPath(modelFile) && isAsciiPath(workDir)) {
+    const linked = path.join(workDir, path.basename(modelFile));
+    try {
+      if (!fs.existsSync(linked)) fs.linkSync(modelFile, linked);
+      if (isAsciiPath(linked)) { modelForWhisper = linked; modelLink = linked; }
+    } catch (_) { /* cross-volume or perms — keep the original model path */ }
+  }
+
   // Whisper stderr goes to a per-job log kept on failure (path lands in
   // error.details), deleted on success/cancel — mirrors bin/transcribe.
   const logFile = path.join(os.tmpdir(), `transcribe_log_${process.pid}_${crypto.randomBytes(4).toString('hex')}.log`);
@@ -384,7 +410,7 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
   try {
     if (job.canceled) throw canceledError();
     const child = spawnTool(whisperBin, [
-      '-m', modelFile, '-f', wav, '-l', langCode, '-otxt', '-osrt', '-of', ofBase, '-pp',
+      '-m', modelForWhisper, '-f', wav, '-l', langCode, '-otxt', '-osrt', '-of', ofBase, '-pp',
     ]);
     child.__job = job;
     if (onChild) onChild(child);
@@ -434,6 +460,13 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
     return { txt, srt };
   } finally {
     fs.rmSync(wav, { force: true });
+    // Drop the model hardlink (win32 non-ASCII path) once whisper has released its
+    // mmap. It lives in workDir so the queue's teardown would reclaim it too, but
+    // an NTFS hardlink pins the model's data blocks even after the model file
+    // itself is deleted — removing it here avoids invisible disk retention if the
+    // queue's whole-dir rmrf later loses a lock race. maxRetries covers the beat
+    // after a cancel while whisper is still unmapping.
+    if (modelLink) { try { fs.rmSync(modelLink, { force: true, maxRetries: 10, retryDelay: 150 }); } catch (_) { /* queue teardown will retry */ } }
     if (!keepLog) {
       logStream.destroy();
       fs.rmSync(logFile, { force: true });
@@ -773,5 +806,6 @@ module.exports = {
     normalizeLang,
     whisperOutputPlan,
     moveOutput,
+    isAsciiPath,
   },
 };
