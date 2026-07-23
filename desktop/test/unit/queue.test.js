@@ -171,8 +171,9 @@ test('spec-pinned delay values (dup flash 0.4s, copied 2s, note 4s, lookup watch
 });
 
 test('outputPaths stems from the last path component only', () => {
-  const o = outputPaths('/tmp/videos v2.0/clip.mov');
-  assert.strictEqual(o.txt, '/tmp/videos v2.0/clip.txt');
+  const input = path.join(path.sep + 'tmp', 'videos v2.0', 'clip.mov');
+  const o = outputPaths(input);
+  assert.strictEqual(o.txt, path.join(path.sep + 'tmp', 'videos v2.0', 'clip.txt'));
   assert.strictEqual(o.srt, '/tmp/videos v2.0/clip.srt');
 });
 

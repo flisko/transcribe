@@ -59,7 +59,8 @@ test('modelPath joins <root>/models/<file>', () => {
   assert.equal(p, path.join(path.resolve('/fake/r'), 'models', 'ggml-large-v3.bin'));
 });
 
-test('findTool mac: found via injected PATH; whisper-cpp fallback order', () => {
+test('findTool mac: found via injected PATH; whisper-cpp fallback order', { skip: process.platform === 'win32' &&
+  'mac PATH semantics cannot be simulated on a Windows filesystem (drive-letter colons break the ":" delimiter)' }, () => {
   const bin = tmpdir();
   const empty = tmpdir();
   fs.writeFileSync(path.join(bin, 'whisper-cpp'), '#!/bin/sh\n', { mode: 0o755 });
