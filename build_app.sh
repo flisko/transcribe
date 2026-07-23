@@ -1,163 +1,151 @@
 #!/bin/bash
-# Builds Transcribe.app — a wrapper around bin/transcribe.
-# The app finds bin/transcribe RELATIVE TO ITSELF at run time, so the built app
-# is portable: copy the whole folder to any Mac and it still works.
+# Builds Transcribe.app from app/*.swift as a universal binary (Apple Silicon
+# + Intel). The app finds bin/transcribe RELATIVE TO ITSELF at run time, so the
+# built app is portable: copy the whole folder to any Mac and it still works.
+#
+# Usage: ./build_app.sh [--version X.Y.Z] [--update-repo owner/name]
+#   --version      Baked into Info.plist. Default: "$(cat VERSION).0".
+#   --update-repo  GitHub repo the app polls for new releases. Default: empty,
+#                  which turns the update check OFF — local builds never nag.
+#                  CI passes the real repo slug; see .github/workflows/release.yml.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SRC="$(mktemp -t transcribe_app).applescript"
-cat > "$SRC" <<'APPLESCRIPT'
--- Resolve bin/transcribe relative to THIS app's own location (not a baked path).
-on coreScriptPath()
-    set appPosix to POSIX path of (path to me)
-    return (do shell script "dirname " & quoted form of appPosix) & "/bin/transcribe"
-end coreScriptPath
+fail() { echo "" >&2; echo "ERROR: $1" >&2; shift; for line in "$@"; do echo "       $line" >&2; done; exit 1; }
 
--- Format a seconds count as a friendly ETA string.
-on formatETA(secs)
-    set s to secs as integer
-    if s < 0 then set s to 0
-    if s < 60 then return ("~" & s & "s left")
-    set m to s div 60
-    set r to s mod 60
-    return ("~" & m & "m " & r & "s left")
-end formatETA
+VERSION=""
+UPDATE_REPO=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --version)
+      [ $# -ge 2 ] || fail "--version needs a value, e.g. --version 1.0.3"
+      VERSION="$2"; shift 2 ;;
+    --update-repo)
+      [ $# -ge 2 ] || fail "--update-repo needs a value, e.g. --update-repo flisko/transcribe"
+      UPDATE_REPO="$2"; shift 2 ;;
+    -h|--help)
+      sed -n '2,10p' "$0"; exit 0 ;;
+    *)
+      fail "Unknown option: $1" "Usage: ./build_app.sh [--version X.Y.Z] [--update-repo owner/name]" ;;
+  esac
+done
 
--- Double-clicking the app opens a file picker.
-on run
-    try
-        set chosenFiles to (choose file with prompt "Choose video file(s) to transcribe:" with multiple selections allowed)
-    on error number -128
-        return -- user pressed Cancel
-    end try
-    processFiles(chosenFiles)
-end run
+# Local builds default to "<major.minor>.0"; CI overrides with a real patch
+# number so released versions always sort above local ones.
+if [ -z "$VERSION" ]; then
+  [ -f VERSION ] || fail "VERSION file not found next to build_app.sh." \
+    "It should contain the major.minor version (e.g. 1.0)."
+  VERSION="$(tr -d '[:space:]' < VERSION).0"
+fi
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Version must look like X.Y.Z (got: \"$VERSION\")."
+[[ -z "$UPDATE_REPO" || "$UPDATE_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
+  || fail "--update-repo must look like owner/name (got: \"$UPDATE_REPO\")."
 
--- Dragging file(s) onto the app icon also works.
-on open theFiles
-    processFiles(theFiles)
-end open
+# Everything the build needs must exist up front — better one clear message
+# than a swiftc stack trace halfway through.
+shopt -s nullglob
+SOURCES=(app/*.swift)
+shopt -u nullglob
+[ ${#SOURCES[@]} -gt 0 ] || fail "No Swift sources found in app/." \
+  "This script compiles the app from app/*.swift — make sure you're running it" \
+  "inside the full transcribe folder (app/ must sit next to build_app.sh)."
+[ -f assets/AppIcon.icns ] || fail "App icon not found at assets/AppIcon.icns." \
+  "The icon ships with the project — restore the assets/ folder and try again."
+xcode-select -p >/dev/null 2>&1 && command -v swiftc >/dev/null 2>&1 \
+  || fail "The Swift compiler isn't available on this Mac." \
+    "Install the Xcode Command Line Tools first:  xcode-select --install" \
+    "(Only the Mac that BUILDS the app needs this — Macs that just run it don't.)"
 
-on processFiles(theFiles)
-    if (count of theFiles) is 0 then return
+BUILD_DIR="$(mktemp -d -t transcribe_build)"
+trap 'rm -rf "$BUILD_DIR"' EXIT
 
-    -- 0. Locate the engine relative to this app; guard if it's missing.
-    set coreScript to coreScriptPath()
-    try
-        do shell script "test -f " & quoted form of coreScript
-    on error
-        display dialog "Couldn't find the transcriber engine at:" & return & return & coreScript & return & return & "Make sure the whole Transcribe folder was copied to this Mac (not just the app), then run setup.command once on this Mac." buttons {"OK"} default button "OK" with title "Transcribe"
-        return
-    end try
+# One slice per architecture, then lipo. The flag set "-O -swift-version 5
+# -parse-as-library" is a contract with app/main.swift (@main entry point) —
+# don't change it without changing the app source too.
+for ARCH in arm64 x86_64; do
+  echo "Compiling ($ARCH)…"
+  swiftc -O -swift-version 5 -parse-as-library \
+    -target "$ARCH-apple-macos13.0" \
+    "${SOURCES[@]}" -o "$BUILD_DIR/Transcribe-$ARCH"
+done
+lipo -create "$BUILD_DIR/Transcribe-arm64" "$BUILD_DIR/Transcribe-x86_64" \
+  -output "$BUILD_DIR/Transcribe"
 
-    -- 1. Choose the model (pros/cons shown right in the dialog).
-    try
-        set modelChoice to button returned of (display dialog "Choose the transcription model:
-
-•  BEST QUALITY  (recommended)
-   Most accurate for Croatian & Slovenian.
-   Slower, and a larger model.
-
-•  FAST
-   About 4× faster.
-   Slightly less accurate on these languages.
-
-Not sure? Choose Best quality." buttons {"Cancel", "Fast", "Best quality"} default button "Best quality" with title "Transcribe — model")
-    on error number -128
-        return -- user pressed Cancel
-    end try
-    if modelChoice is "Fast" then
-        set modelSel to "fast"
-    else
-        set modelSel to "best"
-    end if
-
-    -- 2. Choose the language.
-    try
-        set langAnswer to text returned of (display dialog "Language of the audio?
-
-Type a code or name, for example:
-    hr = Croatian      sl = Slovenian
-    en = English       de = German
-
-… or type  auto  to detect it automatically." default answer "hr" with title "Transcribe — language")
-    on error number -128
-        return -- user pressed Cancel
-    end try
-
-    set filesArg to ""
-    repeat with f in theFiles
-        set filesArg to filesArg & " " & quoted form of (POSIX path of f)
-    end repeat
-
-    -- 3. Launch the engine in the background; it writes progress to progFile,
-    --    all its output to resFile, and touches doneFile when finished.
-    set progFile to do shell script "mktemp -t transcribe_prog"
-    set resFile to do shell script "mktemp -t transcribe_res"
-    set doneFile to resFile & ".done"
-    set launchCmd to "( TRANSCRIBE_PROGRESS_FILE=" & quoted form of progFile & " " & quoted form of coreScript & " " & quoted form of modelSel & " " & quoted form of langAnswer & filesArg & " > " & quoted form of resFile & " 2>&1 ; touch " & quoted form of doneFile & " ) >/dev/null 2>&1 &"
-    do shell script launchCmd
-
-    -- 4. Show a native progress bar and poll the progress file until done.
-    set progress total steps to 100
-    set progress completed steps to 0
-    set progress description to "Transcribing with the " & modelSel & " model…"
-    set progress additional description to "Preparing…"
-    set startTime to current date
-
-    repeat
-        set isDone to (do shell script "test -f " & quoted form of doneFile & " && echo 1 || echo 0")
-        set ln to ""
-        try
-            set ln to do shell script "tail -1 " & quoted form of progFile & " 2>/dev/null"
-        end try
-        if ln is not "" then
-            set AppleScript's text item delimiters to tab
-            set parts to text items of ln
-            set AppleScript's text item delimiters to ""
-            if (count of parts) > 2 then
-                set pct to 0
-                try
-                    set pct to (item 1 of parts) as integer
-                end try
-                if pct < 0 then set pct to 0
-                if pct > 100 then set pct to 100
-                set idx to item 2 of parts
-                set tot to item 3 of parts
-                set fname to ""
-                if (count of parts) > 3 then set fname to item 4 of parts
-                set progress completed steps to pct
-                set etaText to "estimating…"
-                if pct > 0 and pct < 100 then
-                    set elapsed to (current date) - startTime
-                    set etaText to formatETA((elapsed * (100 - pct)) / pct)
-                else if pct is 100 then
-                    set etaText to "finishing…"
-                end if
-                set progress additional description to ("File " & idx & " of " & tot & " — " & fname & "   ·   " & etaText)
-            end if
-        end if
-        if isDone is "1" then exit repeat
-        delay 0.3
-    end repeat
-    set progress completed steps to 100
-
-    -- 5. Summarise and clean up.
-    set summary to ""
-    try
-        set summary to do shell script "grep -E '^Done|SKIP|not found' " & quoted form of resFile & " 2>/dev/null"
-    end try
-    if summary is "" then
-        try
-            set summary to do shell script "tail -3 " & quoted form of resFile
-        end try
-    end if
-    do shell script "rm -f " & quoted form of progFile & " " & quoted form of (progFile & ".tmp") & " " & quoted form of resFile & " " & quoted form of doneFile
-    display dialog "Transcription finished." & return & return & summary & return & return & "Transcript (.txt) and subtitles (.srt) are saved next to each video." buttons {"OK"} default button "OK" with title "Transcribe"
-end processFiles
-APPLESCRIPT
-
+echo "Assembling Transcribe.app…"
 rm -rf Transcribe.app
-osacompile -o Transcribe.app "$SRC"
-rm -f "$SRC"
-echo "Built Transcribe.app (locates bin/transcribe relative to itself at run time)"
+mkdir -p Transcribe.app/Contents/MacOS Transcribe.app/Contents/Resources
+cp "$BUILD_DIR/Transcribe" Transcribe.app/Contents/MacOS/Transcribe
+cp assets/AppIcon.icns Transcribe.app/Contents/Resources/AppIcon.icns
+printf 'APPL????' > Transcribe.app/Contents/PkgInfo
+
+# TranscribeUpdateRepo empty = the app skips the update check entirely.
+# CFBundleDocumentTypes lets users drop audio/video files on the Dock icon.
+cat > Transcribe.app/Contents/Info.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>Transcribe</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.flisko.transcribe</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Transcribe</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$VERSION</string>
+	<key>CFBundleVersion</key>
+	<string>$VERSION</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>TranscribeUpdateRepo</key>
+	<string>$UPDATE_REPO</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Audio or Video</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.movie</string>
+				<string>public.audio</string>
+				<string>public.audio-visual-content</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
+PLIST
+plutil -lint -s Transcribe.app/Contents/Info.plist
+
+# Ad-hoc signature: enough for local Macs; first launch on ANOTHER Mac still
+# needs right-click -> Open (or the xattr command in the README) — expected
+# for an unsigned-developer app. (--force: swiftc's linker already ad-hoc
+# signs the binary; its stderr note about replacing that is noise, but real
+# failures must still surface.)
+codesign --force -s - Transcribe.app 2> "$BUILD_DIR/codesign.log" \
+  || { cat "$BUILD_DIR/codesign.log" >&2; fail "Code signing failed (see message above)."; }
+
+echo ""
+echo "Built Transcribe.app"
+echo "  version       : $VERSION"
+echo "  runs on       : macOS 13+, Apple Silicon + Intel (universal)"
+if [ -n "$UPDATE_REPO" ]; then
+  echo "  update check  : github.com/$UPDATE_REPO releases"
+else
+  echo "  update check  : off (local build)"
+fi
+echo "The app locates bin/ and models/ relative to itself — keep the folder together."

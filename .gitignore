@@ -1,6 +1,16 @@
-models/*.bin
+# Build artifact — releases carry it, local builds recreate it.
 Transcribe.app/
+# 4.6GB of models — setup.command downloads them, never git.
+models/
+# Transcription outputs land next to their source files.
 *.txt
 *.srt
 !docs/**/*.md
+# Partial downloads (yt-dlp) and stray archives (incl. CI release zips).
+*.part
+*.ytdl
+*.zip
 .DS_Store
+# Personal test recording — stays local, never in git (see docs/RELEASING.md
+# Step 0 for stripping it from the existing history before any push).
+IMG_2827.mov
