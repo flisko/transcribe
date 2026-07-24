@@ -19,7 +19,15 @@ function idOf(payload) {
 }
 
 function registerIpc({ ipcMain, queue, settings, catalog, languages, actions }) {
-  ipcMain.handle('cmd', (_event, cmd, payload) => {
+  ipcMain.handle('cmd', (event, cmd, payload) => {
+    // Defense-in-depth: only the app's own local-file windows may drive commands.
+    // Every app window loads a file:// renderer page; a window that ever shows
+    // REMOTE content (the Instagram login) is created with no preload and thus no
+    // command bridge, but reject by sender too so a hijacked or remote frame can
+    // never reach the main-process command surface (runSetup → spawn, addFiles,
+    // setSetting, …).
+    const senderUrl = event && event.senderFrame ? event.senderFrame.url : '';
+    if (!/^file:\/\//i.test(senderUrl)) return;
     switch (cmd) {
       case 'addFiles': {
         const paths = Array.isArray(payload) ? payload

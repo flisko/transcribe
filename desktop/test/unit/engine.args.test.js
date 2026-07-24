@@ -84,6 +84,24 @@ test('URL validation: rejects option-shaped, file:// and other non-links', () =>
   }
 });
 
+test('URL validation: rejects loopback/private/link-local/metadata hosts (SSRF)', () => {
+  for (const bad of [
+    'http://localhost/x', 'https://localhost:8080/admin', 'http://sub.localhost/',
+    'http://127.0.0.1/', 'http://127.5.5.5/', 'http://0.0.0.0/',
+    'http://169.254.169.254/latest/meta-data/', 'http://[::1]/', 'http://[fe80::1]/',
+    'http://10.0.0.5/', 'http://192.168.1.1/', 'http://172.16.0.1/', 'http://172.31.255.255/',
+    'http://router.local/', 'http://svc.internal/', 'http://100.64.0.1/',
+  ]) {
+    assert.equal(isAllowedUrl(bad), false, `SSRF: should reject ${bad}`);
+  }
+  for (const good of [
+    'https://www.youtube.com/watch?v=x', 'https://www.tiktok.com/@u/video/1',
+    'https://www.instagram.com/reel/abc/', 'http://172.32.0.1/', 'http://8.8.8.8/',
+  ]) {
+    assert.equal(isAllowedUrl(good), true, `should allow public host ${good}`);
+  }
+});
+
 test('parseInfoLine: normal line', () => {
   assert.deepEqual(parseInfoLine('Me at the zoo\t19\tFalse\t1'), {
     title: 'Me at the zoo', durationSec: 19, isLive: false, playlistCount: 1,

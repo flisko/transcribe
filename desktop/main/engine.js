@@ -22,6 +22,14 @@ const logic = require('../shared/logic.js');
 
 const IS_WIN = process.platform === 'win32';
 
+// Absolute System32 path for taskkill — a bare 'taskkill' is resolved via the
+// child search path, which on Windows includes the process cwd, so a taskkill.exe
+// planted in a download/output folder could run instead. (Same exe-planting
+// footgun setup.ps1 avoids for curl and queue.js for whoami/icacls.)
+const TASKKILL = IS_WIN
+  ? path.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'taskkill.exe')
+  : 'taskkill';
+
 // ---------------------------------------------------------------- helpers
 
 function sleep(ms) {
@@ -160,10 +168,41 @@ async function removeDirWithRetry(dir, totalMs = 4000) {
 
 // ---------------------------------------------------------------- URL guard
 
-// ^https?:// doubles as arg-injection immunity: an accepted value can never
-// start with '-' and file:// / raw paths never reach a spawn.
+// SSRF guard: reject loopback / private / link-local / metadata targets so a
+// pasted link like http://169.254.169.254/latest/meta-data/ or
+// http://localhost:8080/admin can't be turned into an internal request by yt-dlp.
+// (Literal-host defense; a public name that DNS-rebinds to a private IP is out of
+// scope here — the concrete, easy-to-abuse cases are blocked.)
+function isPrivateHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === '::1' || h === '::') return true;                 // IPv6 loopback / unspecified
+  if (/^fe[89ab][0-9a-f]:/i.test(h)) return true;             // fe80::/10 link-local
+  if (/^f[cd][0-9a-f]{2}:/i.test(h)) return true;             // fc00::/7 unique-local
+  if (/^::ffff:/i.test(h)) return true;                       // IPv4-mapped IPv6 — treat as private, be safe
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const o = m.slice(1).map(Number);
+    if (o.some((n) => n > 255)) return true;
+    if (o[0] === 0 || o[0] === 127 || o[0] === 10) return true;         // this-host, loopback, private
+    if (o[0] === 169 && o[1] === 254) return true;                      // link-local incl. 169.254.169.254 metadata
+    if (o[0] === 172 && o[1] >= 16 && o[1] <= 31) return true;          // 172.16/12
+    if (o[0] === 192 && o[1] === 168) return true;                      // 192.168/16
+    if (o[0] === 100 && o[1] >= 64 && o[1] <= 127) return true;         // 100.64/10 CGNAT
+  }
+  return false;
+}
+
+// ^https?:// doubles as arg-injection immunity: an accepted value can never start
+// with '-' and file:// / raw paths never reach a spawn. The URL is then parsed and
+// internal/loopback hosts rejected (SSRF).
 function isAllowedUrl(text) {
-  return /^https?:\/\/\S+$/i.test(String(text || '').trim());
+  const s = String(text || '').trim();
+  if (!/^https?:\/\/\S+$/i.test(s)) return false;
+  let u;
+  try { u = new URL(s); } catch (_) { return false; }
+  return !isPrivateHost(u.hostname);
 }
 
 // ---------------------------------------------------------------- probe (C2)
@@ -491,12 +530,20 @@ function downloadError(exitCode, stderr, lookupStage) {
 // worse, the after_move:filepath path is mangled and the finished download can't be
 // located → the misleading "the video may be private or removed". Forcing yt-dlp's
 // own output to UTF-8 makes it match Node's decode. No-op on macOS (already UTF-8).
-function infoArgs(url) {
+// --cookies <file>: an optional Netscape cookie file (e.g. an Instagram login
+// captured in-app) so sites that gate anonymous access authenticate. Passed as a
+// separate argv element (never interpolated); only added when a path is given.
+function cookieArgs(cookieFile) {
+  return cookieFile ? ['--cookies', cookieFile] : [];
+}
+
+function infoArgs(url, cookieFile) {
   // -I 1: a bare playlist/channel URL would otherwise be enumerated in full
   // (--no-playlist only trims &list= off watch URLs); playlist_count still
   // reports the real count so the queue can refuse multi-video links.
   return [
     '--no-update', '--encoding', 'UTF-8', '--no-playlist', '-I', '1', '--skip-download',
+    ...cookieArgs(cookieFile),
     '--print', '%(title)s\t%(duration)s\t%(is_live)s\t%(playlist_count)s',
     url,
   ];
@@ -504,9 +551,10 @@ function infoArgs(url) {
 
 // Verified flag sets from research_ytdlp.json — args as ARRAY so the \t
 // progress template needs no shell quoting.
-function dlArgs(mode, url, stagingDir) {
+function dlArgs(mode, url, stagingDir, cookieFile) {
   const args = [
     '--no-update', '--encoding', 'UTF-8', '--no-playlist', '-I', '1', '--newline', '--progress',
+    ...cookieArgs(cookieFile),
     '--progress-template', 'download:PROGRESS\t%(progress._percent_str)s\t%(progress.eta)s\t%(progress.filename)s',
   ];
   if (mode === 'video') {
@@ -558,7 +606,7 @@ async function dlInfo(url, opts = {}) {
   const ytDlpBin = paths.findTool('ytDlp');
   if (!ytDlpBin) throw downloadError(3, 'yt-dlp not found. Please run setup.', true);
 
-  const child = spawnTool(ytDlpBin, infoArgs(url));
+  const child = spawnTool(ytDlpBin, infoArgs(url, opts.cookieFile));
   if (opts.onChild) opts.onChild(child);
   const out = makeTail();
   const err = makeTail();
@@ -667,7 +715,7 @@ function findStagedFile(dir) {
 let dlSeq = 0;
 
 /// C3: staged download with 2-stage progress mapping and hold-99.
-async function dlGet({ url, mode, destDir, onProgress, onChild }) {
+async function dlGet({ url, mode, destDir, onProgress, onChild, cookieFile }) {
   url = String(url || '').trim();
   if (mode !== 'video' && mode !== 'audio') throw new Error('dlGet: mode must be video|audio');
   if (!path.isAbsolute(String(destDir || ''))) throw new Error('dlGet: absolute destDir required');
@@ -705,7 +753,7 @@ async function dlGet({ url, mode, destDir, onProgress, onChild }) {
   let doneStages = 0;
   let prevName = '';
 
-  const child = spawnTool(ytDlpBin, dlArgs(mode, url, staging));
+  const child = spawnTool(ytDlpBin, dlArgs(mode, url, staging, cookieFile));
   if (onChild) onChild(child);
   const feed = lineSplitter((line) => {
     if (line.startsWith('PROGRESS\t')) {
@@ -763,7 +811,7 @@ function killTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   if (IS_WIN) {
     try {
-      const tk = spawn('taskkill', taskkillArgs(child.pid), { shell: false, windowsHide: true, stdio: 'ignore' });
+      const tk = spawn(TASKKILL, taskkillArgs(child.pid), { shell: false, windowsHide: true, stdio: 'ignore' });
       // A failed spawn (taskkill blocked by AV/EDR, System32 off the child PATH,
       // an IFEO hijack) is delivered ASYNCHRONOUSLY as an 'error' event the
       // try/catch can't see; with no listener Node re-throws it as an uncaught
@@ -794,7 +842,7 @@ async function killTreeAndWait(child, timeoutMs = 3000) {
     await new Promise((resolve) => {
       let tk;
       try {
-        tk = spawn('taskkill', taskkillArgs(child.pid), { shell: false, windowsHide: true, stdio: 'ignore' });
+        tk = spawn(TASKKILL, taskkillArgs(child.pid), { shell: false, windowsHide: true, stdio: 'ignore' });
       } catch (_) {
         return resolve();
       }
