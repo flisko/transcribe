@@ -10,7 +10,7 @@ const path = require('path');
 
 require('./engine.shim.js').ensureShared();
 const { _internals } = require('../../main/engine.js');
-const { moveIntoDest, filesIdentical } = _internals;
+const { moveIntoDest, filesIdentical, findStagedFile } = _internals;
 
 function setup() {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'transcribe-collide-'));
@@ -87,5 +87,19 @@ test('filesIdentical: same size different bytes is not identical', () => {
   fs.writeFileSync(b, 'XXXX');
   assert.equal(filesIdentical(a, b), true);
   assert.equal(filesIdentical(a, path.join(dest, 'missing')), false);
+  fs.rmSync(dest, { recursive: true, force: true });
+});
+
+// findStagedFile: recover the finished download by scanning the staging dir when
+// yt-dlp's printed path is unusable (Windows stdout mangling a non-ASCII name).
+test('findStagedFile: returns the sole non-temp file, ignoring .part/.ytdl', () => {
+  const { dest, staging } = setup();
+  assert.equal(findStagedFile(staging), null, 'empty dir → null');
+  fs.writeFileSync(path.join(staging, 'Čćžšđ 🎬 [id].m4a'), 'AUDIO');   // Unicode name (the real case)
+  fs.writeFileSync(path.join(staging, 'Čćžšđ 🎬 [id].m4a.part'), 'PARTIAL');
+  fs.writeFileSync(path.join(staging, 'frag.ytdl'), 'X');
+  assert.equal(findStagedFile(staging), path.join(staging, 'Čćžšđ 🎬 [id].m4a'),
+    'picks the finished Unicode-named file, skips temp artifacts');
+  assert.equal(findStagedFile(path.join(dest, 'no-such-dir')), null, 'missing dir → null');
   fs.rmSync(dest, { recursive: true, force: true });
 });

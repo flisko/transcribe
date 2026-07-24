@@ -484,12 +484,19 @@ function downloadError(exitCode, stderr, lookupStage) {
   return e;
 }
 
+// --encoding UTF-8 (WHY, Windows finding): yt-dlp's --print writes to stdout using
+// the process codepage, which on Windows (cp1250/cp852) can't represent emoji or
+// non-codepage diacritics — it drops or replaces them (a "Slej 🤏🏻" title prints as
+// "Slej "). Node then reads that stdout as UTF-8, so titles surface with U+FFFD and,
+// worse, the after_move:filepath path is mangled and the finished download can't be
+// located → the misleading "the video may be private or removed". Forcing yt-dlp's
+// own output to UTF-8 makes it match Node's decode. No-op on macOS (already UTF-8).
 function infoArgs(url) {
   // -I 1: a bare playlist/channel URL would otherwise be enumerated in full
   // (--no-playlist only trims &list= off watch URLs); playlist_count still
   // reports the real count so the queue can refuse multi-video links.
   return [
-    '--no-update', '--no-playlist', '-I', '1', '--skip-download',
+    '--no-update', '--encoding', 'UTF-8', '--no-playlist', '-I', '1', '--skip-download',
     '--print', '%(title)s\t%(duration)s\t%(is_live)s\t%(playlist_count)s',
     url,
   ];
@@ -499,7 +506,7 @@ function infoArgs(url) {
 // progress template needs no shell quoting.
 function dlArgs(mode, url, stagingDir) {
   const args = [
-    '--no-update', '--no-playlist', '-I', '1', '--newline', '--progress',
+    '--no-update', '--encoding', 'UTF-8', '--no-playlist', '-I', '1', '--newline', '--progress',
     '--progress-template', 'download:PROGRESS\t%(progress._percent_str)s\t%(progress.eta)s\t%(progress.filename)s',
   ];
   if (mode === 'video') {
@@ -643,6 +650,20 @@ function moveIntoDest(src, destDir) {
   return target;
 }
 
+// Fallback locator: the finished download is the sole non-temporary file in its
+// private staging dir. readdir (libuv, wide Win32 APIs) returns the true Unicode
+// name, so this recovers the file when yt-dlp's stdout mangled the printed path.
+function findStagedFile(dir) {
+  let names;
+  try { names = fs.readdirSync(dir); } catch (_) { return null; }
+  const finals = names
+    .filter((n) => !/\.(part|ytdl|temp|part-Frag\d+)$/i.test(n))
+    .map((n) => path.join(dir, n))
+    .filter((p) => isNonEmptyFile(p));
+  finals.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  return finals[0] || null;
+}
+
 let dlSeq = 0;
 
 /// C3: staged download with 2-stage progress mapping and hold-99.
@@ -707,6 +728,13 @@ async function dlGet({ url, mode, destDir, onProgress, onChild }) {
     const { code, signal } = await waitClose(child);
     feed.flush();
     if (child.__killRequested) throw canceledError();
+    // after_move:filepath is the true completion signal, but if it's missing or
+    // unreadable (a stdout that still mangled a non-ASCII name) yet yt-dlp exited
+    // cleanly, recover the finished file from the single-download staging dir.
+    if (code === 0 && !signal && (!finalSrc || !isNonEmptyFile(finalSrc))) {
+      const staged = findStagedFile(staging);
+      if (staged) finalSrc = staged;
+    }
     if (code !== 0 || signal || !finalSrc || !isNonEmptyFile(finalSrc)) {
       throw downloadError(code, err.value, false);
     }
@@ -807,5 +835,6 @@ module.exports = {
     whisperOutputPlan,
     moveOutput,
     isAsciiPath,
+    findStagedFile,
   },
 };

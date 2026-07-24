@@ -22,6 +22,7 @@ test('infoArgs: pinned lookup flags, URL as the single final element', () => {
   const args = infoArgs(URL);
   for (const f of ['--no-update', '--no-playlist', '--skip-download']) assert.ok(args.includes(f), f);
   assert.ok(hasPair(args, '-I', '1'));
+  assert.ok(hasPair(args, '--encoding', 'UTF-8'), 'forces UTF-8 stdout so non-ASCII titles/paths survive on Windows');
   assert.ok(hasPair(args, '--print', '%(title)s\t%(duration)s\t%(is_live)s\t%(playlist_count)s'));
   assert.equal(args[args.length - 1], URL);
 });
@@ -32,6 +33,7 @@ test('dlArgs video: pinned flag set incl. formats, res cap, merge, staging', () 
     assert.ok(args.includes(f), f);
   }
   assert.ok(hasPair(args, '-I', '1'));
+  assert.ok(hasPair(args, '--encoding', 'UTF-8'), 'forces UTF-8 stdout so the after_move path survives on Windows');
   assert.ok(args.includes(DL_TEMPLATE), 'download progress template with real tabs');
   assert.ok(args.includes(PP_TEMPLATE), 'postprocess template (video only)');
   assert.ok(hasPair(args, '-f', 'bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b'));
