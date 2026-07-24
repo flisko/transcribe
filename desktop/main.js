@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const {
   app, BrowserWindow, ipcMain, Menu, dialog, shell, clipboard,
-  Notification, powerSaveBlocker, powerMonitor, nativeTheme,
+  Notification, powerSaveBlocker, powerMonitor, nativeTheme, session,
 } = require('electron');
 
 const copy = require('./shared/copy');
@@ -21,6 +21,7 @@ const { checkForUpdate } = require('./main/update');
 const menus = require('./main/menus');
 const { registerIpc } = require('./main/ipc');
 const { filterStartupArgs, resolveOpenArg } = require('./main/startup-args');
+const { createInstagram } = require('./main/instagram');
 
 app.setName('Transcribe');
 
@@ -43,6 +44,7 @@ let mainWindow = null;
 let settingsWindow = null;
 let queue = null;
 let settings = null;
+let instagram = null;
 let quitApproved = false;
 let updateChecked = false;
 const pendingOpens = [];   // open-file / second-instance arrivals before ready
@@ -177,9 +179,27 @@ function openSettingsWindow() {
 function sendState() {
   if (!queue) return;
   const snap = queue.snapshot();
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send('state', snap);
+  // ONLY the app's own local-file windows — never the remote Instagram login
+  // window, which must not receive the queue snapshot (local paths, settings).
+  for (const win of [mainWindow, settingsWindow]) {
+    if (win && !win.isDestroyed()) win.webContents.send('state', snap);
   }
+}
+
+// The Instagram login window loads REMOTE content, so the strict hardenWindow
+// (which forbids all navigation) can't apply — the login flow moves between
+// instagram.com pages. Instead: allow only http(s) navigation, block every other
+// scheme (file:, etc.), and never open child windows in-app (https → OS browser).
+// It has no preload and is sandboxed, so it has no bridge to app IPC regardless.
+function hardenLoginWindow(win) {
+  const wc = win.webContents;
+  const guard = (event, url) => { if (!/^https?:\/\//i.test(url)) event.preventDefault(); };
+  wc.on('will-navigate', guard);
+  wc.on('will-redirect', guard);
+  wc.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
 }
 
 // MARK: Quit guard (C5 — Copy strings; trees killed + temp cleaned on quit)
@@ -280,6 +300,31 @@ function openReleasePage() {
   if (typeof url === 'string' && /^https:\/\//i.test(url)) shell.openExternal(url);
 }
 
+// MARK: Instagram (in-app login → transient yt-dlp cookies; see main/instagram.js)
+
+function instagramDialog(message, detail) {
+  const opts = { type: 'info', buttons: ['OK'], defaultId: 0, message, detail };
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  if (win) dialog.showMessageBox(win, opts); else dialog.showMessageBox(opts);
+}
+
+function connectInstagram() {
+  if (!instagram) return;
+  Promise.resolve(instagram.login())
+    .then(() => instagram.isConnected())
+    .then((ok) => instagramDialog(
+      ok ? copy.instagramConnectedTitle : copy.instagramNotConnectedTitle,
+      ok ? copy.instagramConnectedBody : copy.instagramNotConnectedBody))
+    .catch(() => { });
+}
+
+function disconnectInstagram() {
+  if (!instagram) return;
+  Promise.resolve(instagram.logout())
+    .then(() => instagramDialog(copy.instagramDisconnectedTitle, copy.instagramDisconnectedBody))
+    .catch(() => { });
+}
+
 function focusLink() {
   showMainWindow();
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('focus-link');
@@ -321,9 +366,15 @@ app.whenReady().then(() => {
     downloadsDir: app.getPath('downloads'),
   });
   const engine = require('./main/engine');
+  instagram = createInstagram({
+    session, BrowserWindow,
+    getParent: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+    hardenLoginWindow,
+  });
   const sys = createSystemAdapter({
     electron: { shell, clipboard, Notification, powerSaveBlocker, BrowserWindow, app },
     getWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+    instagramCookies: (url) => instagram.cookiesForUrl(url),
   });
   queue = createQueue({ engine, settings, sys });
   queue.onChange(sendState);
@@ -343,6 +394,7 @@ app.whenReady().then(() => {
       openSettings: openSettingsWindow,
       cancelSelected: () => queue.cancelSelected(),
       showWindow: showMainWindow,
+      connectInstagram, disconnectInstagram,
     },
   });
 

@@ -35,6 +35,9 @@ function installAppMenu({ Menu, app, copy, actions }) {
         { label: copy.addFilesMenu, accelerator: 'CmdOrCtrl+O', click: () => actions.addFiles() },
         { label: copy.addLinkMenu, accelerator: 'CmdOrCtrl+L', click: () => actions.focusLink() },
         { type: 'separator' },
+        { label: copy.connectInstagramMenu, click: () => actions.connectInstagram() },
+        { label: copy.disconnectInstagramMenu, click: () => actions.disconnectInstagram() },
+        { type: 'separator' },
         { label: copy.cancelItemMenu, accelerator: 'CmdOrCtrl+.', click: () => actions.cancelSelected() },
         ...(isMac ? [] : [
           { type: 'separator' },

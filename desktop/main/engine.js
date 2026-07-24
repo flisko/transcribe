@@ -537,6 +537,19 @@ function cookieArgs(cookieFile) {
   return cookieFile ? ['--cookies', cookieFile] : [];
 }
 
+// The caller hands us cookie CONTENT (a Netscape file body), never a path or a
+// long-lived file. We write it to a per-user-PRIVATE temp — %TEMP%/$TMPDIR is
+// ACL-restricted to the owner (SYSTEM/Admins/user; NOT world-readable like the
+// download folder) — hand only that path to yt-dlp for a single call, and the
+// caller deletes it in a finally (minimal window, guaranteed cleanup). yt-dlp is
+// Python (wide argv), so a non-ASCII temp path is fine. null → no cookie file.
+function writeCookieFile(cookies) {
+  if (!cookies) return null;
+  const p = path.join(os.tmpdir(), `transcribe-ck-${process.pid}-${crypto.randomBytes(6).toString('hex')}`);
+  fs.writeFileSync(p, String(cookies), { mode: 0o600 });
+  return p;
+}
+
 function infoArgs(url, cookieFile) {
   // -I 1: a bare playlist/channel URL would otherwise be enumerated in full
   // (--no-playlist only trims &list= off watch URLs); playlist_count still
@@ -606,33 +619,42 @@ async function dlInfo(url, opts = {}) {
   const ytDlpBin = paths.findTool('ytDlp');
   if (!ytDlpBin) throw downloadError(3, 'yt-dlp not found. Please run setup.', true);
 
-  const child = spawnTool(ytDlpBin, infoArgs(url, opts.cookieFile));
-  if (opts.onChild) opts.onChild(child);
-  const out = makeTail();
-  const err = makeTail();
-  child.stdout.on('data', (d) => out.push(String(d)));
-  child.stderr.on('data', (d) => err.push(String(d)));
+  let cookieFile = null;
+  try {
+    // opts.cookies may be a string OR an async provider (url -> Netscape|null),
+    // so the queue can defer the Electron cookie read to here without threading
+    // async through its scheduler.
+    cookieFile = writeCookieFile(typeof opts.cookies === 'function' ? await opts.cookies(url) : opts.cookies);
+    const child = spawnTool(ytDlpBin, infoArgs(url, cookieFile));
+    if (opts.onChild) opts.onChild(child);
+    const out = makeTail();
+    const err = makeTail();
+    child.stdout.on('data', (d) => out.push(String(d)));
+    child.stderr.on('data', (d) => err.push(String(d)));
 
-  let timedOut = false;
-  const watchdog = setTimeout(() => {
-    timedOut = true;
-    killTree(child);
-  }, opts.watchdogMs || 30000);
+    let timedOut = false;
+    const watchdog = setTimeout(() => {
+      timedOut = true;
+      killTree(child);
+    }, opts.watchdogMs || 30000);
 
-  const { code, signal } = await waitClose(child);
-  clearTimeout(watchdog);
+    const { code, signal } = await waitClose(child);
+    clearTimeout(watchdog);
 
-  if (timedOut) {
-    // bin/download's watchdog phrasing so the classifier maps this to the
-    // network/took-too-long message.
-    throw downloadError(1,
-      `${err.value}\nERROR: The video lookup took too long and was stopped — check the internet connection.`,
-      true);
+    if (timedOut) {
+      // bin/download's watchdog phrasing so the classifier maps this to the
+      // network/took-too-long message.
+      throw downloadError(1,
+        `${err.value}\nERROR: The video lookup took too long and was stopped — check the internet connection.`,
+        true);
+    }
+    if (child.__killRequested) throw canceledError();
+    const line = lastNonEmptyLine(out.value);
+    if (code !== 0 || signal || !line) throw downloadError(code, err.value, true);
+    return parseInfoLine(line);
+  } finally {
+    if (cookieFile) fs.rmSync(cookieFile, { force: true });
   }
-  if (child.__killRequested) throw canceledError();
-  const line = lastNonEmptyLine(out.value);
-  if (code !== 0 || signal || !line) throw downloadError(code, err.value, true);
-  return parseInfoLine(line);
 }
 
 function filesIdentical(a, b) {
@@ -715,7 +737,7 @@ function findStagedFile(dir) {
 let dlSeq = 0;
 
 /// C3: staged download with 2-stage progress mapping and hold-99.
-async function dlGet({ url, mode, destDir, onProgress, onChild, cookieFile }) {
+async function dlGet({ url, mode, destDir, onProgress, onChild, cookies }) {
   url = String(url || '').trim();
   if (mode !== 'video' && mode !== 'audio') throw new Error('dlGet: mode must be video|audio');
   if (!path.isAbsolute(String(destDir || ''))) throw new Error('dlGet: absolute destDir required');
@@ -744,6 +766,10 @@ async function dlGet({ url, mode, destDir, onProgress, onChild, cookieFile }) {
   const progress = progressReporter(onProgress);
   progress(0);
 
+  // Cookie file in a per-user-private temp (NOT the download folder), deleted in
+  // the finally alongside the staging dir. `cookies` may be a string or an async
+  // provider (url -> Netscape|null) resolved here.
+  const cookieFile = writeCookieFile(typeof cookies === 'function' ? await cookies(url) : cookies);
   const err = makeTail();
   let finalSrc = '';
   // Multi-stage mapping: a merged video is TWO sequential 0→100 downloads; a
@@ -791,6 +817,7 @@ async function dlGet({ url, mode, destDir, onProgress, onChild, cookieFile }) {
     progress(100);
     return { file: target };
   } finally {
+    if (cookieFile) fs.rmSync(cookieFile, { force: true });
     await removeDirWithRetry(staging);
   }
 }

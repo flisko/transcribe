@@ -111,6 +111,10 @@ function createSystemAdapter(opts = {}) {
   const env = opts.env || process.env;
   const electron = opts.electron || null;
   const getWindow = opts.getWindow || (() => null);
+  // Async provider (url -> Netscape cookie content | null) for authenticated
+  // sites (Instagram). Defaults to "no cookies", so downloads work unchanged
+  // until a login is connected. Only ever invoked by the engine, per download.
+  const instagramCookies = opts.instagramCookies || (async () => null);
   let blockerId = null;
 
   function testLog(action, arg) {
@@ -169,6 +173,7 @@ function createSystemAdapter(opts = {}) {
       if (electron.powerSaveBlocker.isStarted(blockerId)) electron.powerSaveBlocker.stop(blockerId);
       blockerId = null;
     },
+    instagramCookies,
   };
 }
 
@@ -563,7 +568,7 @@ function createQueue(opts) {
 
     let handle;
     try {
-      handle = startEngineJob((onChild) => engine.dlInfo(url, { onChild }));
+      handle = startEngineJob((onChild) => engine.dlInfo(url, { onChild, cookies: sys.instagramCookies }));
     } catch (e) {
       cleanupJob(id);
       downloadingID = null;
@@ -650,6 +655,7 @@ function createQueue(opts) {
         mode: it.capturedKeepVideo ? 'video' : 'audio',
         destDir: dest,
         onChild,
+        cookies: sys.instagramCookies,
         onProgress: (pct) => {
           if (handle !== undefined && jobs.get(id) !== handle) return;
           const cur = byId(id);

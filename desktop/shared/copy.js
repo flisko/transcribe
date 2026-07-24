@@ -159,6 +159,17 @@ const Copy = {
   updateAvailable(version) { return `Version ${version} is available.`; },
   updateDownload: 'Download',
 
+  // Instagram login (in-app; File menu). Instagram gates most reels behind a
+  // login, so downloading them needs a logged-in session.
+  connectInstagramMenu: 'Connect Instagram…',
+  disconnectInstagramMenu: 'Disconnect Instagram',
+  instagramConnectedTitle: 'Instagram connected',
+  instagramConnectedBody: 'Instagram links will now download using your login. You can disconnect any time from the File menu.',
+  instagramNotConnectedTitle: 'Not connected',
+  instagramNotConnectedBody: 'You are not logged in to Instagram yet, so Instagram links may still fail. Choose “Connect Instagram…” again and finish logging in.',
+  instagramDisconnectedTitle: 'Instagram disconnected',
+  instagramDisconnectedBody: 'Your Instagram login has been cleared from this app.',
+
   // Shared helpers
   // "under a minute" / "12 min" / "1 hr 20 min" — used by "Done in …" status lines.
   durationPhrase(seconds) {
