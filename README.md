@@ -56,6 +56,22 @@ If anything is missing, the app notices on launch and shows a setup checklist
 with a **Run Setup…** button — so on either system you can also just open the
 app and follow along.
 
+### Make sure you got the real thing
+
+These builds aren't code-signed, which is why macOS and Windows warn on first
+run — and it also means the OS can't tell you where a download came from. The
+**only** official source is
+[github.com/flisko/transcribe/releases](https://github.com/flisko/transcribe/releases).
+Every release lists the SHA-256 of both zips in its notes; if you want to be
+sure, check yours against it:
+
+```bash
+shasum -a 256 Transcribe-macos-v1.0.12.zip      # macOS
+```
+```powershell
+Get-FileHash Transcribe-windows-v1.0.12.zip     # Windows
+```
+
 ## Everyday use
 
 1. **Open the app** — `Transcribe.app` on macOS, `Transcribe.exe` on Windows.

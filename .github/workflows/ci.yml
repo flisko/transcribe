@@ -1,0 +1,61 @@
+# Tests for changes that are NOT yet on main.
+#
+# release.yml runs the same tests, but only after a push to main — by which point
+# it is already packaging that code into a public release. Once the repo is
+# public anyone can open a pull request, so the tests have to run BEFORE the
+# merge, not after it.
+#
+# Deliberately `pull_request`, never `pull_request_target`: a PR from a fork must
+# run with a read-only token and no access to secrets. `permissions: contents:
+# read` says the same thing a second time. Nothing here publishes anything.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main] # main is covered by release.yml
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Both shipped platforms. The suite is platform-aware (Windows and macOS take
+    # different branches through paths.js, engine.js and copy.js), so a green run
+    # on one proves little about the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: desktop
+        run: npm test
+
+      # setup.ps1 must keep parsing under BOTH PowerShell editions. Windows
+      # PowerShell 5.1 is what a real user's double-click gets, and it is the one
+      # that mis-reads a BOM-less file — a corrupted encoding shows up here as a
+      # parse failure rather than as mojibake on a user's screen.
+      - name: setup.ps1 parses (Windows PowerShell 5.1 + pwsh 7)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -SyntaxCheckOnly || exit /b 1
+          pwsh -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -SyntaxCheckOnly || exit /b 1

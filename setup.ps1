@@ -4,14 +4,17 @@
 # and keeps the video downloader up to date.
 # Switches: -AllModels also fetches the four optional smaller models;
 # -ToolsOnly (CI smoke) fetches just the tools and skips the multi-GB models;
-# -SyntaxCheckOnly parses and exits.
+# -SyntaxCheckOnly parses and exits; -TestHooks honors the TRANSCRIBE_SETUP_*
+# environment overrides (validation harness only — see Hook below for why they
+# are off by default).
 #
 # Windows PowerShell 5.1 compatible (also runs on pwsh 7): no ternary, no
 # null-coalescing, no pipeline-chain operators.
 param(
   [switch]$AllModels,
   [switch]$ToolsOnly,
-  [switch]$SyntaxCheckOnly
+  [switch]$SyntaxCheckOnly,
+  [switch]$TestHooks
 )
 
 # Reaching this line means the file parsed — that is all -SyntaxCheckOnly asks.
@@ -65,12 +68,27 @@ function Get-FileSize([string]$path) {
   return [long]0
 }
 
-# All downloads honor TRANSCRIBE_SETUP_MIRROR: when set, every file is fetched
-# as <mirror>/<original file name> instead of from the real hosts — this is
-# how the validation harness points the script at a local HTTP server.
+# Test seams (TRANSCRIBE_SETUP_*) let a validation harness redirect downloads and
+# substitute the programs this script runs. That is exactly the capability an
+# attacker wants, so they are IGNORED unless -TestHooks is passed on the command
+# line. Writing HKCU\Environment or running `setx` needs no administrator rights,
+# and this script tells the user to re-run it as administrator when the VC++ step
+# fails — an environment variable alone must never be able to steer that run.
+# A switch cannot be set behind the user's back the way an env var can.
+function Hook([string]$name) {
+  if (-not $TestHooks) { return '' }
+  $value = [Environment]::GetEnvironmentVariable($name)
+  if ($null -eq $value) { return '' }
+  return $value
+}
+
+# All downloads honor TRANSCRIBE_SETUP_MIRROR (with -TestHooks): every file is
+# fetched as <mirror>/<original file name> instead of from the real hosts — this
+# is how the validation harness points the script at a local HTTP server.
 function Resolve-Url([string]$url) {
-  if ($env:TRANSCRIBE_SETUP_MIRROR) {
-    return ($env:TRANSCRIBE_SETUP_MIRROR.TrimEnd('/') + '/' + $url.Split('/')[-1])
+  $mirror = Hook 'TRANSCRIBE_SETUP_MIRROR'
+  if ($mirror) {
+    return ($mirror.TrimEnd('/') + '/' + $url.Split('/')[-1])
   }
   return $url
 }
@@ -81,7 +99,8 @@ function Resolve-Url([string]$url) {
 # (validation runs on a Mac) plain "curl" is the real thing.
 # Override: TRANSCRIBE_SETUP_CURL = path of the curl binary to use.
 function Resolve-Curl {
-  if ($env:TRANSCRIBE_SETUP_CURL) { return $env:TRANSCRIBE_SETUP_CURL }
+  $override = Hook 'TRANSCRIBE_SETUP_CURL'
+  if ($override) { return $override }
   if ($env:SystemRoot) {
     $sys = Join-Path $env:SystemRoot (Join-Path 'System32' 'curl.exe')
     if (Test-Path -LiteralPath $sys) { return $sys }
@@ -170,7 +189,8 @@ function Install-ZipTool {
 #     uses a small sentinel instead).
 function Test-WhisperDllLoad([string]$exe) {
   $probe = $exe
-  if ($env:TRANSCRIBE_SETUP_WHISPER_SMOKE) { $probe = $env:TRANSCRIBE_SETUP_WHISPER_SMOKE }
+  $smoke = Hook 'TRANSCRIBE_SETUP_WHISPER_SMOKE'
+  if ($smoke) { $probe = $smoke }
   try {
     & $probe '--help' *> $null
   } catch {
@@ -179,8 +199,8 @@ function Test-WhisperDllLoad([string]$exe) {
   $code = $LASTEXITCODE
   if ($code -eq -1073741515) { return $false }   # 0xC0000135, signed int32
   if ($code -eq 3221225781)  { return $false }   # 0xC0000135, unsigned
-  if ($env:TRANSCRIBE_SETUP_DLL_FAIL_CODE -and
-      "$code" -eq "$env:TRANSCRIBE_SETUP_DLL_FAIL_CODE") { return $false }
+  $failCode = Hook 'TRANSCRIBE_SETUP_DLL_FAIL_CODE'
+  if ($failCode -and "$code" -eq "$failCode") { return $false }
   return $true
 }
 
@@ -198,7 +218,8 @@ function Install-VCRedist {
     return $false
   }
   $runner = $exe
-  if ($env:TRANSCRIBE_SETUP_VCREDIST_RUN) { $runner = $env:TRANSCRIBE_SETUP_VCREDIST_RUN }
+  $vcOverride = Hook 'TRANSCRIBE_SETUP_VCREDIST_RUN'
+  if ($vcOverride) { $runner = $vcOverride }
   try {
     & $runner '/install' '/quiet' '/norestart'
   } catch {
@@ -338,7 +359,8 @@ $YtDlpExe = Join-Path $YtDlpDir 'yt-dlp.exe'
 if (Test-Path -LiteralPath $YtDlpExe) {
   Write-Host "Updating the video downloader (yt-dlp) — sites change often, this keeps links working…"
   $updater = $YtDlpExe
-  if ($env:TRANSCRIBE_SETUP_YTDLP_UPDATE) { $updater = $env:TRANSCRIBE_SETUP_YTDLP_UPDATE }
+  $ytOverride = Hook 'TRANSCRIBE_SETUP_YTDLP_UPDATE'
+  if ($ytOverride) { $updater = $ytOverride }
   $updOK = $false
   try {
     & $updater '-U'

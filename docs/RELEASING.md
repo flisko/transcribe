@@ -23,6 +23,29 @@ now would rewrite every already-pushed commit and force-push over it. Only reach
 for that if a private file genuinely made it into a pushed commit — and then say
 so loudly, because clones and forks keep the old objects.
 
+## Public repo: what that changed
+
+The repo is public, so anyone can read the source, fork it, and open pull
+requests. Three things exist because of that:
+
+- **`.github/workflows/ci.yml`** runs the unit tests (plus a `setup.ps1` parse
+  check under both PowerShell editions) on every pull request and on every
+  branch that isn't `main`. `release.yml` also runs them, but only *after* a
+  push to main — by which point it is already packaging that code for release.
+  ci.yml uses `pull_request`, never `pull_request_target`, and a read-only
+  token, so a fork's PR gets no secrets and no write access.
+- **Release notes carry SHA-256 checksums** of both zips. The builds are
+  unsigned, so this is the only integrity signal a user has — and a fork could
+  otherwise publish an identical-looking "Transcribe" release.
+- **`.github/dependabot.yml`** raises weekly PRs for `desktop/`. Electron *is*
+  Chromium, and the lockfile publicly states which one each release shipped.
+
+Two things worth knowing when reading `npm audit` here: the number that matters
+is **`npm audit --omit=dev`, which is 0** — the app has zero runtime
+dependencies and nothing from npm reaches users (`app.asar` holds only the 25
+first-party runtime files). The high-severity lines in a plain `npm audit` are
+all inside `electron-builder`'s own tree and run only on a build machine.
+
 ## What happens on every push to main
 
 Once the project lives on GitHub (see "Activating releases" below), the

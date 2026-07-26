@@ -168,13 +168,31 @@ jobs:
         with:
           merge-multiple: true
 
+      # Neither build is code-signed, so the OS can tell a user nothing about
+      # where a zip came from — and the repo is public, so anyone can fork it and
+      # let this same workflow publish a "Transcribe" release under their own
+      # account. A SHA-256 published here, next to the artifacts this run
+      # produced, is the one thing a careful user can check a download against.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${RELEASE_VERSION}" \
-            "Transcribe-macos-v${RELEASE_VERSION}.zip" \
-            "Transcribe-windows-v${RELEASE_VERSION}.zip" \
+          MAC="Transcribe-macos-v${RELEASE_VERSION}.zip"
+          WIN="Transcribe-windows-v${RELEASE_VERSION}.zip"
+          {
+            echo '### Verify your download'
+            echo
+            echo 'These builds are not code-signed, so macOS and Windows will warn on first run.'
+            echo 'The only official source is <https://github.com/flisko/transcribe/releases>.'
+            echo 'Check the file you downloaded against the SHA-256 below —'
+            echo '`shasum -a 256 <file>` on macOS, `Get-FileHash <file>` on Windows.'
+            echo
+            echo '```'
+            sha256sum "$MAC" "$WIN"
+            echo '```'
+          } > release-notes.md
+          gh release create "v${RELEASE_VERSION}" "$MAC" "$WIN" \
             --target "$GITHUB_SHA" \
             --title "Transcribe v${RELEASE_VERSION}" \
+            --notes-file release-notes.md \
             --generate-notes
