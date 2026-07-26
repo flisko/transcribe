@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -74,7 +74,7 @@ jobs:
           cp setup.command README.md stage/Transcribe/
           ditto -c -k --keepParent stage/Transcribe "Transcribe-macos-v${RELEASE_VERSION}.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac-zip
           path: Transcribe-macos-v*.zip
@@ -85,7 +85,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -144,7 +144,7 @@ jobs:
           Copy-Item 'Transcribe Setup.bat', 'setup.ps1', 'README.md' stage/Transcribe/
           Compress-Archive -Path stage/Transcribe -DestinationPath "Transcribe-windows-v$env:RELEASE_VERSION.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: win-zip
           path: Transcribe-windows-v*.zip
@@ -164,7 +164,7 @@ jobs:
       - name: Compute release version
         run: echo "RELEASE_VERSION=$(tr -d '[:space:]' < VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
