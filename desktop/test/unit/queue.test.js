@@ -732,7 +732,7 @@ test('dropping a folder enqueues the media inside it, in name order', async (t) 
   const h = harness(t);
   const folder = path.join(h.dir, 'Predavanja');
   fs.mkdirSync(folder);
-  for (const n of ['c.mp4', 'a.mov', 'b.mp3', 'notes.txt', 'cover.jpg', '.hidden.mp4']) {
+  for (const n of ['c.mp4', 'a.mov', 'b.mp3', 'notes.txt', 'cover.jpg', '._a.mov']) {
     fs.writeFileSync(path.join(folder, n), 'media-bytes');
   }
   fs.mkdirSync(path.join(folder, 'nested'));
@@ -741,11 +741,14 @@ test('dropping a folder enqueues the media inside it, in name order', async (t) 
   h.queue.addFiles([folder]);
   const titles = h.queue.snapshot().items.map((i) => i.title);
 
-  assert.deepStrictEqual(titles, ['.hidden.mp4', 'a.mov', 'b.mp3', 'c.mp4'],
+  assert.deepStrictEqual(titles, ['a.mov', 'b.mp3', 'c.mp4'],
     'media only, sorted; no row for the folder itself');
   assert.ok(!titles.includes('notes.txt'), 'non-media ignored');
   assert.ok(!titles.includes('cover.jpg'), 'images ignored');
   assert.ok(!titles.includes('deep.mp4'), 'one level only — a nested folder is not walked');
+  // "._a.mov" is the AppleDouble sidecar macOS writes next to every file on a
+  // FAT/exFAT stick. It has a media extension and is not media.
+  assert.ok(!titles.includes('._a.mov'), 'AppleDouble sidecars are not transcribable');
 });
 
 test('a folder with no media adds nothing at all (no misleading failed row)', async (t) => {

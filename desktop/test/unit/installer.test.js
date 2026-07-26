@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { findPayload, writeHelper, psQuote, shQuote, installUpdate } =
+const { findPayload, writeHelper, psQuote, shQuote, installUpdate, psExe } =
   require('../../main/installer.js');
 
 function tmp(label) {
@@ -99,6 +99,33 @@ test('writeHelper (darwin): polls the pid, dittos, reopens', () => {
   if (process.platform !== 'win32') {
     assert.ok(fs.statSync(file).mode & 0o100, 'executable');
   }
+});
+
+// BOTH helpers must generate correctly from EITHER host. writeHelper takes
+// `platform` as an argument, so nothing inside it may be derived from the machine
+// running it — and this is not hypothetical: a host-derived PowerShell path was
+// null off Windows and broke the macOS build, while every test passed here. This
+// test fails on whichever host the bug is on.
+test('helper generation is host-independent for both platforms', () => {
+  const d = tmp('crossplat');
+
+  const win = writeHelper(d, { src: 'S', dst: 'D', pid: 1, platform: 'win32' });
+  assert.equal(typeof win.bin, 'string', 'win32 helper needs a real interpreter path on any host');
+  assert.match(win.bin, /^[A-Za-z]:\\.*\\powershell\.exe$/i, 'an absolute WINDOWS path, built with path.win32');
+  assert.ok(Array.isArray(win.args) && win.args.length > 0);
+  assert.ok(!/\//.test(fs.readFileSync(path.join(d, 'apply-update.ps1'), 'utf8').match(/Start-Process[^\n]*/)[0]),
+    'no posix separators leak into the PowerShell script');
+
+  const mac = writeHelper(d, { src: '/S', dst: '/D', pid: 1, platform: 'darwin' });
+  assert.equal(mac.bin, '/bin/bash');
+  const sh = fs.readFileSync(path.join(d, 'apply-update.sh'), 'utf8');
+  assert.ok(!/\\/.test(sh.match(/\/usr\/bin\/open[^\n]*/)[0]),
+    'no windows separators leak into the bash script');
+});
+
+test('psExe: a Windows path even when the environment has no SystemRoot (i.e. on a mac)', () => {
+  assert.match(psExe({}), /^C:\\Windows\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/i);
+  assert.match(psExe({ SystemRoot: 'D:\\Win' }), /^D:\\Win\\System32\\.*powershell\.exe$/i);
 });
 
 // ---- refusal paths --------------------------------------------------------

@@ -415,6 +415,12 @@ function createQueue(opts) {
       let names = [];
       try { names = fs.readdirSync(raw).sort((a, b) => a.localeCompare(b)); } catch { }
       for (const name of names) {
+        // Skip dotfiles. On macOS, copying to a FAT/exFAT volume (a USB stick,
+        // an SD card off a camera — exactly where a folder of recordings comes
+        // from) leaves an AppleDouble "._clip.mp4" beside every real file: a few
+        // KB of metadata that passes the extension test and would enqueue a row
+        // that can only fail. Nothing a user means to transcribe starts with a dot.
+        if (name.startsWith('.')) continue;
         if (!MEDIA_EXTS.has(path.extname(name).slice(1).toLowerCase())) continue;
         const p = path.join(raw, name);
         try { if (fs.statSync(p).isFile()) out.push(p); } catch { }

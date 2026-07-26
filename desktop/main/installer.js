@@ -27,10 +27,15 @@ const { spawn } = require('node:child_process');
 
 const IS_WIN = process.platform === 'win32';
 
-const PS_EXE = IS_WIN
-  ? path.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows',
-              'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-  : null;
+// Absolute, and built with path.win32 so it is a valid Windows path on ANY host.
+// These functions take `platform` as an argument — they are meant to be able to
+// produce a Windows helper from a mac and vice versa — so nothing here may be
+// derived from the machine we happen to be running on. (A host-derived constant
+// here is what broke the macOS build: it was null off Windows.)
+function psExe(env = process.env) {
+  const root = env.SystemRoot || env.windir || 'C:\\Windows';
+  return path.win32.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+}
 
 // Redirects are the norm here: a GitHub asset URL 302s to objects.githubusercontent.com,
 // and node:https does not follow on its own.
@@ -95,7 +100,7 @@ function extract(zip, into) {
   fs.mkdirSync(into, { recursive: true });
   if (IS_WIN) {
     // -LiteralPath so a folder with [] in its name still works.
-    return run(PS_EXE, ['-NoProfile', '-NonInteractive', '-Command',
+    return run(psExe(), ['-NoProfile', '-NonInteractive', '-Command',
       `Expand-Archive -LiteralPath ${psQuote(zip)} -DestinationPath ${psQuote(into)} -Force`]);
   }
   // ditto, not unzip: the mac zip is made with ditto and carries the .app's
@@ -136,7 +141,7 @@ function writeHelper(dir, { src, dst, pid, platform = process.platform }) {
       `Remove-Item -LiteralPath ${psQuote(dir)} -Recurse -Force`,
       '',
     ].join('\r\n'), 'utf8');
-    return { bin: PS_EXE, args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file] };
+    return { bin: psExe(), args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file] };
   }
   const file = path.join(dir, 'apply-update.sh');
   fs.writeFileSync(file, [
@@ -215,4 +220,4 @@ async function installUpdate({ asset, folderRoot, onProgress, onStage, platform 
   }
 }
 
-module.exports = { installUpdate, findPayload, writeHelper, download, psQuote, shQuote };
+module.exports = { installUpdate, findPayload, writeHelper, download, psQuote, shQuote, psExe };
