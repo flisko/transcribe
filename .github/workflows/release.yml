@@ -74,7 +74,7 @@ jobs:
           cp setup.command README.md stage/Transcribe/
           ditto -c -k --keepParent stage/Transcribe "Transcribe-macos-v${RELEASE_VERSION}.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac-zip
           path: Transcribe-macos-v*.zip
@@ -144,7 +144,7 @@ jobs:
           Copy-Item 'Transcribe Setup.bat', 'setup.ps1', 'README.md' stage/Transcribe/
           Compress-Archive -Path stage/Transcribe -DestinationPath "Transcribe-windows-v$env:RELEASE_VERSION.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: win-zip
           path: Transcribe-windows-v*.zip
