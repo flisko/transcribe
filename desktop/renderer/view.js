@@ -357,7 +357,7 @@
   // ---------- static chrome wiring ----------
   $('clearDoneBtn').addEventListener('click', () => invoke('clearDone'));
   $('gearBtn').addEventListener('click', () => invoke('openSettingsWindow'));
-  $('bannerDownloadBtn').addEventListener('click', () => invoke('openReleasePage'));
+  $('bannerDownloadBtn').addEventListener('click', () => invoke('installUpdate'));
   $('bannerDismissBtn').addEventListener('click', () => invoke('dismissBanner'));
   $('browseBtn').addEventListener('click', (e) => { e.stopPropagation(); invoke('browse'); });
   $('dropzone').addEventListener('click', () => invoke('browse'));

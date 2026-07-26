@@ -110,8 +110,43 @@ test('result: newer tag -> available with cleaned version + url', async () => {
     tag_name: 'v2.1.0', html_url: 'https://github.com/x/y/releases/tag/v2.1.0',
   });
   assert.deepStrictEqual(
-    await checkForUpdateResult({ slug: 'x/y', currentVersion: '2.0.5', fetcher, isNewer }),
-    { status: 'available', version: '2.1.0', url: 'https://github.com/x/y/releases/tag/v2.1.0', reason: null });
+    await checkForUpdateResult({ slug: 'x/y', currentVersion: '2.0.5', fetcher, isNewer, platform: 'win32' }),
+    {
+      status: 'available',
+      version: '2.1.0',
+      url: 'https://github.com/x/y/releases/tag/v2.1.0',
+      reason: null,
+      asset: null,   // this release lists no assets
+    });
+});
+
+// One-click update needs the actual zip, not just the release page.
+test('result: picks the asset for THIS platform, and only over https', async () => {
+  const assets = [
+    { name: 'Transcribe-macos-v2.1.0.zip', browser_download_url: 'https://x/mac.zip', size: 11 },
+    { name: 'Transcribe-windows-v2.1.0.zip', browser_download_url: 'https://x/win.zip', size: 22 },
+  ];
+  const fetcher = fetcherReturning(200, { tag_name: 'v2.1.0', html_url: 'https://x', assets });
+
+  const win = await checkForUpdateResult({ slug: 'x/y', currentVersion: '2.0.5', fetcher, isNewer, platform: 'win32' });
+  assert.deepStrictEqual(win.asset, { name: 'Transcribe-windows-v2.1.0.zip', url: 'https://x/win.zip', size: 22 });
+
+  const mac = await checkForUpdateResult({ slug: 'x/y', currentVersion: '2.0.5', fetcher, isNewer, platform: 'darwin' });
+  assert.deepStrictEqual(mac.asset, { name: 'Transcribe-macos-v2.1.0.zip', url: 'https://x/mac.zip', size: 11 });
+
+  // A platform with no build must fall back to the page, never to another OS's zip.
+  const linux = await checkForUpdateResult({ slug: 'x/y', currentVersion: '2.0.5', fetcher, isNewer, platform: 'linux' });
+  assert.strictEqual(linux.asset, null);
+  assert.strictEqual(linux.status, 'available', 'the banner still appears');
+});
+
+test('result: a non-https asset URL is refused', async () => {
+  const fetcher = fetcherReturning(200, {
+    tag_name: 'v9.9.9',
+    assets: [{ name: 'Transcribe-windows-v9.9.9.zip', browser_download_url: 'http://x/win.zip', size: 1 }],
+  });
+  const r = await checkForUpdateResult({ slug: 'x/y', currentVersion: '1.0.0', fetcher, isNewer, platform: 'win32' });
+  assert.strictEqual(r.asset, null, 'plain http is never a download target');
 });
 
 test('result: same or older tag -> upToDate', async () => {

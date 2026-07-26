@@ -18,6 +18,7 @@ const languages = require('./shared/languages');
 const { createQueue, createSystemAdapter } = require('./main/queue');
 const { createSettings } = require('./main/settings');
 const { checkForUpdateResult } = require('./main/update');
+const { installUpdate } = require('./main/installer');
 const menus = require('./main/menus');
 const { registerIpc } = require('./main/ipc');
 const { filterStartupArgs, resolveOpenArg } = require('./main/startup-args');
@@ -417,6 +418,52 @@ function openReleasePage() {
   if (typeof url === 'string' && /^https:\/\//i.test(url)) shell.openExternal(url);
 }
 
+// One click: fetch the release zip for this platform, merge it over the install
+// folder, restart. The install folder is the right target precisely because the
+// zip carries only app files — models/ and tools/ are never in it, so a 4.6 GB
+// download survives an update untouched.
+//
+// Falls back to the release page whenever it cannot do that: a release with no
+// asset for this OS, a folder the user can't write to, a download that failed.
+// Nothing on disk is touched until the new version is downloaded, size-checked
+// and verified to contain Transcribe, so every failure leaves a working app.
+let installInFlight = false;
+
+function beginInstallUpdate() {
+  if (!queue) return;
+  const asset = queue.getUpdateAsset();
+  if (!asset) { openReleasePage(); return; }   // nothing installable — hand over the page
+  if (installInFlight) return;
+  installInFlight = true;
+  queue.setUpdateState({ installing: true, installPct: 0, installError: null });
+
+  let folderRoot = null;
+  try { folderRoot = require('./main/paths').folderRoot(); } catch { /* reported below */ }
+
+  installUpdate({
+    asset,
+    folderRoot,
+    onProgress: (pct) => { if (queue) queue.setUpdateState({ installPct: pct }); },
+    // Past the download there is no percentage to show, so the status switches
+    // to the "restarting in a moment" sentence.
+    onStage: (stage) => { if (queue) queue.setUpdateState({ installPct: stage === 'installing' ? null : 0 }); },
+    quit: () => { quitApproved = true; app.quit(); },
+  }).catch((e) => {
+    installInFlight = false;
+    if (!queue) return;
+    // A read-only folder has a different cure than a failed download, and saying
+    // "opening the download page" to someone whose real problem is where the app
+    // lives would just repeat the failure.
+    const readOnly = !!(e && e.readOnly);
+    queue.setUpdateState({
+      installing: false,
+      installPct: null,
+      installError: readOnly ? copy.updateFolderReadOnly : copy.updateInstallFailed,
+    });
+    if (!readOnly) openReleasePage();
+  });
+}
+
 // MARK: Instagram (in-app login → transient yt-dlp cookies; see main/instagram.js)
 
 function instagramDialog(message, detail) {
@@ -498,6 +545,8 @@ function runUpdateCheck({ manual }) {
         reason: r.reason || null,
         latestVersion: r.version,
         url: r.url,
+        asset: r.asset || null,
+        installError: null,
       });
       // The banner is the automatic, dismissible notice; a manual check raises
       // it too, so the main window agrees with what Settings just said.
@@ -544,6 +593,7 @@ app.whenReady().then(() => {
     actions: {
       browse, chooseDownloadFolder, runSetup, openReleasePage, rowMenu, openSettingsWindow,
       checkForUpdates: () => runUpdateCheck({ manual: true }),
+      installUpdate: beginInstallUpdate,
     },
   });
 

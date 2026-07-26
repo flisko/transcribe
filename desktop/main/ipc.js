@@ -83,6 +83,7 @@ function registerIpc({ ipcMain, queue, settings, catalog, languages, actions }) 
       case 'recheckDeps': return queue.probeDeps();
       case 'openReleasePage': return actions.openReleasePage();
       case 'checkForUpdates': return actions.checkForUpdates();
+      case 'installUpdate': return actions.installUpdate();
       case 'dismissBanner': return queue.dismissBanner();
       case 'rowMenu': {
         const id = idOf(payload);

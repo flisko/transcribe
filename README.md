@@ -148,26 +148,28 @@ Balkan languages, stick with **Best quality**.
 
 ## Updates
 
-**Transcribe never installs anything by itself.** It checks whether a newer
-version exists and tells you; downloading and replacing the folder stays your
-decision. That's deliberate — you always know exactly what's on your machine.
+When a new version exists, a banner appears at the top of the window. Press
+**Update** and Transcribe does the rest — it downloads the new version, installs
+it, and restarts itself. **Your models, tools and settings are kept**: the
+update only replaces the app.
 
 - **Which version am I on?** Settings → **Updates** shows it, and macOS also
   shows it under  → About Transcribe.
-- **A new version exists** → a banner appears at the top of the window. Click
-  **Download** to open the release page and grab the zip for your system.
 - **Check whenever you like** → Settings → Updates → **Check Now**, or the
-  **Check for Updates…** menu item. It tells you what it found, including when
-  it couldn't reach the internet.
+  **Check for Updates…** menu item. It tells you what it found — including when
+  it couldn't reach the internet, which is a different thing from being current.
 - **Don't want the automatic check?** Turn off **Check for updates
-  automatically** in the same place. Nothing phones home after that; Check Now
-  still works when you ask for it.
+  automatically**. Nothing phones home after that, and Check Now still works
+  when you ask for it.
 
-Updating never touches the models: replace the app, keep your `models` folder
-(and `tools` on Windows), and nothing re-downloads. The automatic check runs
-once at launch, is silent when it fails, and never interrupts your work. Apps
-built locally have no release to compare against and skip it entirely — see
-`docs/RELEASING.md`.
+**Nothing is installed until you press Update.** The check only looks; it never
+downloads on its own. And if the update can't be applied — no internet, or the
+Transcribe folder is somewhere you can't write to — Transcribe says so and opens
+the download page so you can do it by hand. A failed update always leaves the
+version you already have working.
+
+Apps built locally have no release to compare against and skip the check
+entirely — see `docs/RELEASING.md`.
 
 ## From the Terminal (macOS only)
 

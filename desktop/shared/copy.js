@@ -187,7 +187,13 @@ function english(ctx) {
 
   // Update banner
   updateAvailable(version) { return `Version ${version} is available.`; },
-  updateDownload: 'Download',
+  // "Update", not "Download": the button installs and restarts, it does not
+  // hand you a zip. The label has to promise what actually happens.
+  updateNow: 'Update',
+  updateDownloading(pct) { return `Downloading the update — ${pct}%`; },
+  updateInstalling: 'Installing — Transcribe will restart in a moment…',
+  updateInstallFailed: "The update couldn't be installed. Opening the download page so you can update by hand.",
+  updateFolderReadOnly: "Transcribe can't update itself from this folder — it doesn't allow changes. Move the Transcribe folder somewhere you own (Documents, for example) and try again.",
 
   // Settings ▸ Updates. The app deliberately does NOT install anything by
   // itself (see docs/RELEASING.md) — the automatic part is the *check*, and the
@@ -197,7 +203,7 @@ function english(ctx) {
   settingsVersion(version) { return `Version ${version}`; },
   settingsCheckNow: 'Check Now',
   settingsAutoCheck: 'Check for updates automatically',
-  settingsAutoCheckCaption: 'Looks once each time Transcribe starts, and shows a banner when a new version exists. Nothing is downloaded or installed for you — you choose when to update.',
+  settingsAutoCheckCaption: 'Looks once each time Transcribe starts and shows a banner when a new version exists. Nothing happens until you press Update — your models and settings are kept.',
   updateChecking: 'Checking…',
   updateUpToDate: `You're on the latest version.`,
   updateCheckFailed: "Couldn't check for updates just now — check your internet connection and try again.",

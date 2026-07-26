@@ -219,7 +219,14 @@ function createQueue(opts) {
   // from "couldn't check". main.js drives it (it owns the network call and the
   // app version); the queue only stores it and composes the sentence.
   const appVersion = opts.appVersion || null;
-  let update = { supported: false, checking: false, result: null, reason: null, latestVersion: null, url: null };
+  let update = {
+    supported: false, checking: false, result: null, reason: null,
+    latestVersion: null, url: null,
+    asset: null,          // the zip for this platform, when the release has one
+    installing: false,    // download/install in flight
+    installPct: null,     // 0-100 while downloading
+    installError: null,   // a composed sentence, shown in place of the status
+  };
 
   let transcribingID = null;
   let downloadingID = null;
@@ -1155,6 +1162,11 @@ function createQueue(opts) {
   // only paints. `statusText` is null when there is genuinely nothing to say —
   // a supported build that hasn't been asked to check yet.
   function updateStatusText() {
+    // Installing outranks everything: it is the only state the user is waiting on.
+    if (update.installError) return update.installError;
+    if (update.installing) {
+      return update.installPct == null ? copy.updateInstalling : copy.updateDownloading(update.installPct);
+    }
     if (update.checking) return copy.updateChecking;
     if (!update.supported) return copy.updateCheckOff;
     if (update.result === 'available') return copy.updateAvailable(update.latestVersion);
@@ -1175,10 +1187,15 @@ function createQueue(opts) {
       autoCheck: !!settings.get('autoCheckUpdates'),
       supported: !!update.supported,
       checking: !!update.checking,
-      canCheck: !!update.supported && !update.checking,
+      canCheck: !!update.supported && !update.checking && !update.installing,
       statusText: updateStatusText(),
-      // Only offer Download for a real, still-current "available" result.
+      // Only offer the button for a real, still-current "available" result.
       downloadUrl: update.result === 'available' ? (update.url || null) : null,
+      // True when one click can actually install: a matching asset exists. Without
+      // one the same button still works, it just opens the release page.
+      canInstall: update.result === 'available' && !!update.asset && !update.installing,
+      installing: !!update.installing,
+      installPct: update.installing ? update.installPct : null,
     };
   }
 
@@ -1284,6 +1301,7 @@ function createQueue(opts) {
     // user to a dead page is worse than sending them nowhere. The banner is the
     // fallback, for when the panel has been reset but the notice still stands.
     getUpdateUrl: () => (update.result === 'available' ? update.url : null) || (banner && banner.url) || null,
+    getUpdateAsset: () => (update.result === 'available' ? update.asset : null),
     stateOf(id) { const it = byId(id); return it ? it.state : null; },
     handleWake,
     prepareForTermination,

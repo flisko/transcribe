@@ -65,6 +65,7 @@
     $('updateStatus').textContent = u.statusText || '';
     $('updateStatus').hidden = !u.statusText;
     $('downloadUpdateBtn').hidden = !u.downloadUrl;
+    $('downloadUpdateBtn').disabled = !!u.installing;
     setSwitch($('autoUpdateSwitch'), !!u.autoCheck);
   }
 
@@ -113,7 +114,7 @@
   });
   $('chooseFolderBtn').addEventListener('click', () => invoke('chooseDownloadFolder'));
   $('checkUpdatesBtn').addEventListener('click', () => invoke('checkForUpdates'));
-  $('downloadUpdateBtn').addEventListener('click', () => invoke('openReleasePage'));
+  $('downloadUpdateBtn').addEventListener('click', () => invoke('installUpdate'));
   $('autoUpdateSwitch').addEventListener('click', () => {
     if (snapshot && snapshot.update) {
       invoke('setSetting', { key: 'autoCheckUpdates', value: !snapshot.update.autoCheck });

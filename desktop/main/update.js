@@ -36,7 +36,27 @@ function defaultFetcher(url, timeoutMs) {
   });
 }
 
-const NOTHING = Object.freeze({ version: null, url: null, reason: null });
+const NOTHING = Object.freeze({ version: null, url: null, reason: null, asset: null });
+
+// The release zip for THIS platform, out of the assets GitHub lists. CI names
+// them Transcribe-macos-v1.0.42.zip / Transcribe-windows-v1.0.42.zip, so match on
+// the stable part and ignore the version. Returns null when the running platform
+// has no asset in that release — which must degrade to "open the page", never to
+// installing the wrong OS's build.
+function pickAsset(assets, platform) {
+  const pattern = platform === 'darwin' ? /^Transcribe-macos-.*\.zip$/i
+    : platform === 'win32' ? /^Transcribe-windows-.*\.zip$/i
+      : null;
+  if (!pattern || !Array.isArray(assets)) return null;
+  for (const a of assets) {
+    if (a && typeof a.name === 'string' && pattern.test(a.name)
+        && typeof a.browser_download_url === 'string'
+        && /^https:\/\//i.test(a.browser_download_url)) {
+      return { name: a.name, url: a.browser_download_url, size: Number(a.size) || 0 };
+    }
+  }
+  return null;
+}
 
 /// Resolves {status, version, url, reason}. Never rejects. status is one of:
 ///   'available' — a newer release exists (version/url populated)
@@ -53,7 +73,7 @@ const NOTHING = Object.freeze({ version: null, url: null, reason: null });
 /// means the request DID complete and the answer was unusable — a 404 against a
 /// private repo, a 403 rate-limit, a 5xx. Telling that user to check their
 /// internet connection sends them to debug a network that is working fine.
-async function checkForUpdateResult({ slug, currentVersion, fetcher, isNewer, timeoutMs = 5000 } = {}) {
+async function checkForUpdateResult({ slug, currentVersion, fetcher, isNewer, timeoutMs = 5000, platform = process.platform } = {}) {
   if (!slug || typeof slug !== 'string' || !currentVersion) return { status: 'off', ...NOTHING };
   const fetch = fetcher || defaultFetcher;
   const newer = isNewer || require('../shared/logic').versionIsNewer;
@@ -78,6 +98,9 @@ async function checkForUpdateResult({ slug, currentVersion, fetcher, isNewer, ti
       version: clean,
       url: typeof obj.html_url === 'string' ? obj.html_url : null,
       reason: null,
+      // The zip this platform would install. null (no matching asset) keeps the
+      // release page as the only offer.
+      asset: pickAsset(obj.assets, platform),
     };
   } catch {
     return { status: 'failed', ...NOTHING, reason: 'server' };
@@ -91,4 +114,4 @@ async function checkForUpdate(opts) {
   return r.status === 'available' ? { version: r.version, url: r.url } : null;
 }
 
-module.exports = { checkForUpdate, checkForUpdateResult };
+module.exports = { checkForUpdate, checkForUpdateResult, pickAsset };
