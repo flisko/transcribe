@@ -4,10 +4,16 @@
 // so every mutation broadcasts a fresh snapshot.
 'use strict';
 
-const SETTING_KEYS = ['model', 'language', 'keepVideo', 'downloadFolder', 'notifyOnFinish'];
+const SETTING_KEYS = ['model', 'language', 'keepVideo', 'downloadFolder', 'notifyOnFinish',
+                      'autoCheckUpdates'];
+const BOOL_KEYS = ['keepVideo', 'notifyOnFinish', 'autoCheckUpdates'];
 
-// Row actions the e2e suite may dispatch directly through rowMenu (a native
-// popup cannot be clicked by Playwright). Only active with TRANSCRIBE_TEST_LOG.
+// Row actions an out-of-process UI driver may dispatch directly through rowMenu
+// (a native popup menu can't be clicked by one). Only active with
+// TRANSCRIBE_TEST_LOG set, and every action here is already reachable through
+// its own command, so the shim widens nothing. No such suite lives in the repo
+// today — the hook and the sibling one in queue.js are kept because they are the
+// pinned way to drive row actions from outside (C10).
 const ROW_ACTIONS = ['openTranscript', 'openSubtitles', 'showInFinder', 'copyTranscript',
                      'copyErrorDetails', 'transcribeAgain', 'retry', 'startAgain',
                      'cancel', 'remove'];
@@ -26,7 +32,13 @@ function registerIpc({ ipcMain, queue, settings, catalog, languages, actions }) 
     // command bridge, but reject by sender too so a hijacked or remote frame can
     // never reach the main-process command surface (runSetup → spawn, addFiles,
     // setSetting, …).
-    const senderUrl = event && event.senderFrame ? event.senderFrame.url : '';
+    // senderFrame is null once the frame is gone, and touching a disposed frame
+    // can throw — either way the sender is not a live app window, so fail closed.
+    let senderUrl = '';
+    try {
+      const frame = event && event.senderFrame;
+      senderUrl = (frame && frame.url) || '';
+    } catch { /* frame disposed mid-invoke — treat as untrusted */ }
     if (!/^file:\/\//i.test(senderUrl)) return;
     switch (cmd) {
       case 'addFiles': {
@@ -60,7 +72,7 @@ function registerIpc({ ipcMain, queue, settings, catalog, languages, actions }) 
         if (!SETTING_KEYS.includes(key)) return false;
         if (key === 'model' && !catalog.all.some((m) => m.sel === value)) return false;
         if (key === 'language' && !languages.isValid(value)) return false;
-        if (key === 'keepVideo' || key === 'notifyOnFinish') value = !!value;
+        if (BOOL_KEYS.includes(key)) value = !!value;
         if (key === 'downloadFolder' && (typeof value !== 'string' || !value)) return false;
         settings.set(key, value);
         queue.refresh();
@@ -70,6 +82,7 @@ function registerIpc({ ipcMain, queue, settings, catalog, languages, actions }) 
       case 'runSetup': return actions.runSetup();
       case 'recheckDeps': return queue.probeDeps();
       case 'openReleasePage': return actions.openReleasePage();
+      case 'checkForUpdates': return actions.checkForUpdates();
       case 'dismissBanner': return queue.dismissBanner();
       case 'rowMenu': {
         const id = idOf(payload);

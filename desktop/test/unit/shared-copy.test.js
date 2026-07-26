@@ -55,6 +55,56 @@ test('platform default comes from process.platform', () => {
     process.platform === 'darwin' ? 'setup.command' : 'Transcribe Setup');
 });
 
+// C7 extended: every string that named a mac-only thing has a win32 wording.
+// A Windows user must never be told to free space on "your Mac", to keep
+// "Transcribe.app" next to "bin", or to look in the Finder.
+test('no mac-only nouns survive on windows', () => {
+  const win = freshCopy('win32');
+  const macWords = /\b(Mac|Finder|Transcribe\.app|the Terminal)\b/;
+  const offenders = [];
+  for (const [key, value] of Object.entries(win)) {
+    // Formatters get a placeholder argument so their text is checked too.
+    const text = typeof value === 'function' ? String(value('x', 1, 2, 3)) : value;
+    if (typeof text === 'string' && macWords.test(text)) offenders.push(`${key}: ${text}`);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('windows wording for the platform-specific sentences', () => {
+  const win = freshCopy('win32');
+  assert.equal(win.showInFinder, 'Show in File Explorer');
+  assert.ok(win.failDiskDownload.startsWith("Your PC's disk is full"), win.failDiskDownload);
+  assert.ok(win.failYtDlpMissing.endsWith('already on this PC.'), win.failYtDlpMissing);
+  assert.ok(win.failFfmpegMissing.includes('missing on this PC.'), win.failFfmpegMissing);
+  assert.ok(win.failModelCorrupt.includes('file on this PC looks damaged'), win.failModelCorrupt);
+  assert.ok(win.failOutOfMemory('clip.mp4').includes('your PC ran out of memory'));
+  assert.ok(win.failOutputDirReadOnly('a.mp4').endsWith('copy the video to your PC first.'));
+  assert.ok(win.setupIntro.includes('Everything runs on your PC'), win.setupIntro);
+  assert.ok(win.setupFootnote.startsWith('Setup opens a PowerShell window'), win.setupFootnote);
+  assert.equal(win.engineMissing,
+    'Transcribe can\'t find its engine. Keep Transcribe.exe inside the Transcribe folder, next to "Transcribe Setup" and "models", then click Check Again.');
+});
+
+// The mac sentences must stay byte-identical — this is still a verbatim port.
+test('mac wording for the same sentences is unchanged', () => {
+  assert.equal(Copy.showInFinder, 'Show in Finder');
+  assert.equal(Copy.failDiskDownload,
+    "Your Mac's disk is full, so the download stopped. Free up some space, then press Retry to download it again.");
+  assert.equal(Copy.failFfmpegMissing,
+    'A helper that reads sound from video files (ffmpeg) is missing on this Mac. Please double-click setup.command (in the Transcribe folder) to install it, then try again.');
+  assert.equal(Copy.failOutOfMemory('clip.mov'),
+    "Transcribing 'clip.mov' stopped because your Mac ran out of memory. Close some other apps and try again — or choose the Fast model, which needs much less memory.");
+  assert.equal(Copy.setupIntro,
+    'Transcribe needs a few free components before it can start. Everything runs on your Mac — nothing is uploaded.');
+  assert.equal(Copy.setupFootnote,
+    "Setup opens the Terminal and takes a few minutes, mostly downloading. It's safe to run more than once.");
+});
+
+test('failOutputLocked names the file the user has to close', () => {
+  assert.equal(Copy.failOutputLocked('Čćžšđ proba.txt'),
+    "Couldn't save 'Čćžšđ proba.txt' — a program still has that file open. Close it (Word, Notepad, a media player…), then press Retry.");
+});
+
 test('setup-name strings are otherwise verbatim (mac)', () => {
   assert.equal(Copy.failModelMissing('Fast'),
     "The 'Fast' model isn't downloaded. Run setup.command (it offers the extra models), or switch models.");

@@ -492,6 +492,19 @@ try {
   }
 } catch { }
 
+# 8. Tidy the download staging folder. Every successful install deletes its own
+#    file out of it, so an EMPTY .dl means the run is done with it. It is only
+#    removed when empty: leftovers are half-downloaded tool zips that curl -C -
+#    resumes on the next run, and deleting those would restart the download.
+try {
+  if (Test-Path -LiteralPath $StageDir) {
+    $leftover = @(Get-ChildItem -LiteralPath $StageDir -Force -ErrorAction SilentlyContinue)
+    if ($leftover.Count -eq 0) {
+      Remove-Item -LiteralPath $StageDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+} catch { }
+
 Write-Host ""
 if ($installFailed) {
   Write-Host "Setup is almost done — one of the tools couldn't be installed (see the"

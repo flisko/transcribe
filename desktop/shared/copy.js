@@ -2,10 +2,26 @@
 // Strings that name the setup entry point derive from SETUP_NAME (contract C7):
 // mac = "setup.command", win = "Transcribe Setup". Platform is decided at require
 // time from process.platform; TRANSCRIBE_FAKE_PLATFORM overrides it for tests.
+//
+// C7 extended (the app now ships on Windows too): the same substitution applies
+// to every other string that named a mac-only thing — "your Mac", "this Mac",
+// "Finder", "Transcribe.app", "the Terminal". Windows users were being told to
+// free space on a Mac they don't own. The macOS wording is unchanged byte for
+// byte (the port-verbatim tests assert it); only the win32 branch is new.
 'use strict';
 
 const platform = process.env.TRANSCRIBE_FAKE_PLATFORM || process.platform;
-const SETUP_NAME = platform === 'darwin' ? 'setup.command' : 'Transcribe Setup';
+const IS_MAC = platform === 'darwin';
+const SETUP_NAME = IS_MAC ? 'setup.command' : 'Transcribe Setup';
+const THIS_COMPUTER = IS_MAC ? 'this Mac' : 'this PC';
+const YOUR_COMPUTER = IS_MAC ? 'your Mac' : 'your PC';
+const YOUR_COMPUTER_CAP = IS_MAC ? 'Your Mac' : 'Your PC';
+const FILE_MANAGER = IS_MAC ? 'Finder' : 'File Explorer';
+// What has to stay beside the app for folderMarkerPresent() to find the folder:
+// mac looks for setup.command next to Transcribe.app, win for the setup pair
+// next to Transcribe.exe.
+const APP_FILE = IS_MAC ? 'Transcribe.app' : 'Transcribe.exe';
+const SETUP_CONSOLE = IS_MAC ? 'the Terminal' : 'a PowerShell window';
 
 const Copy = {
   SETUP_NAME,
@@ -56,7 +72,7 @@ const Copy = {
   open: 'Open',
   openTranscript: 'Open Transcript',
   openSubtitles: 'Open Subtitles (.srt)',
-  showInFinder: 'Show in Finder',
+  showInFinder: `Show in ${FILE_MANAGER}`,
   copyTranscript: 'Copy Transcript Text',
   transcribeAgain: 'Transcribe Again',
   removeFromList: 'Remove from List',
@@ -84,15 +100,20 @@ const Copy = {
   failPlaylist(n) { return `This link points to a whole playlist or channel (${n} videos), not one video. Open the video you want, copy its own link, and paste that instead.`; },
   failLivestream: "This is a live stream, and Transcribe can't record live video. Once the stream has ended and the replay is available on the same page, paste the link again and it will work.",
   failStaleDownloader: `The download didn't work — the video site has probably changed something on their end. This is normal and there's an easy fix: double-click ${SETUP_NAME} (in the Transcribe folder), let it update the downloader, then press Retry.`,
-  failDiskDownload: "Your Mac's disk is full, so the download stopped. Free up some space, then press Retry to download it again.",
-  failYtDlpMissing: `Downloading videos from the internet needs a small helper that isn't installed yet. Double-click ${SETUP_NAME} (in the Transcribe folder) once to install it. You can still transcribe files that are already on this Mac.`,
-  failFfmpegMissing: `A helper that reads sound from video files (ffmpeg) is missing on this Mac. Please double-click ${SETUP_NAME} (in the Transcribe folder) to install it, then try again.`,
-  failModelCorrupt: `The speech model file on this Mac looks damaged — usually this means its download was interrupted at some point. Please double-click ${SETUP_NAME}; it will download a fresh copy for you.`,
-  failOutOfMemory(name) { return `Transcribing '${name}' stopped because your Mac ran out of memory. Close some other apps and try again — or choose the Fast model, which needs much less memory.`; },
+  failDiskDownload: `${YOUR_COMPUTER_CAP}'s disk is full, so the download stopped. Free up some space, then press Retry to download it again.`,
+  failYtDlpMissing: `Downloading videos from the internet needs a small helper that isn't installed yet. Double-click ${SETUP_NAME} (in the Transcribe folder) once to install it. You can still transcribe files that are already on ${THIS_COMPUTER}.`,
+  failFfmpegMissing: `A helper that reads sound from video files (ffmpeg) is missing on ${THIS_COMPUTER}. Please double-click ${SETUP_NAME} (in the Transcribe folder) to install it, then try again.`,
+  failModelCorrupt: `The speech model file on ${THIS_COMPUTER} looks damaged — usually this means its download was interrupted at some point. Please double-click ${SETUP_NAME}; it will download a fresh copy for you.`,
+  failOutOfMemory(name) { return `Transcribing '${name}' stopped because ${YOUR_COMPUTER} ran out of memory. Close some other apps and try again — or choose the Fast model, which needs much less memory.`; },
   failFileMissing(name) { return `Skipped '${name}' — the file can't be found any more. It may have been moved, renamed, or deleted, or it's on a drive that isn't connected.`; },
   failZeroLength(name) { return `Skipped '${name}' — the file is empty, so there is nothing to transcribe.`; },
   failFolderUnwritable(folder) { return `Transcribe can't save downloads into '${folder}' — it may have been deleted or isn't allowed. Choose a different folder for downloads.`; },
-  failOutputDirReadOnly(name) { return `Transcripts are saved next to the video, but the folder holding '${name}' doesn't allow saving. Choose another folder for this transcript, or copy the video to your Mac first.`; },
+  failOutputDirReadOnly(name) { return `Transcripts are saved next to the video, but the folder holding '${name}' doesn't allow saving. Choose another folder for this transcript, or copy the video to ${YOUR_COMPUTER} first.`; },
+  // The transcription itself succeeded but the finished file couldn't be put in
+  // place — on Windows a transcript still open in Word/Notepad holds an exclusive
+  // lock and rename() fails with EPERM. Without this the raw
+  // "EPERM: operation not permitted, rename …" reached the row's status line.
+  failOutputLocked(name) { return `Couldn't save '${name}' — a program still has that file open. Close it (Word, Notepad, a media player…), then press Retry.`; },
   noSpeechNote(name) { return `Finished '${name}', but no speech was found — the transcript is empty. If you expected words here, check that the video's sound is audible and the right language was chosen.`; },
 
   // Footer
@@ -112,7 +133,7 @@ const Copy = {
 
   // Setup state
   setupTitle: 'One-time setup',
-  setupIntro: 'Transcribe needs a few free components before it can start. Everything runs on your Mac — nothing is uploaded.',
+  setupIntro: `Transcribe needs a few free components before it can start. Everything runs on ${YOUR_COMPUTER} — nothing is uploaded.`,
   setupWhisper: 'Speech recognition (whisper)',
   setupFfmpeg: 'Audio converter (ffmpeg)',
   setupModels: 'Language models (4.6 GB download)',
@@ -121,8 +142,13 @@ const Copy = {
   notInstalled: 'Not installed',
   runSetup: 'Run Setup…',
   checkAgain: 'Check Again',
-  setupFootnote: "Setup opens the Terminal and takes a few minutes, mostly downloading. It's safe to run more than once.",
-  engineMissing: 'Transcribe can\'t find its engine. Keep Transcribe.app inside the Transcribe folder, next to "bin" and "models", then click Check Again.',
+  setupFootnote: `Setup opens ${SETUP_CONSOLE} and takes a few minutes, mostly downloading. It's safe to run more than once.`,
+  // The folder marker the app actually looks for is the setup entry point beside
+  // the app (paths.folderMarkerPresent), so name what the user must keep there:
+  // mac ships bin/ + setup.command, win ships "Transcribe Setup" + setup.ps1.
+  engineMissing: IS_MAC
+    ? 'Transcribe can\'t find its engine. Keep Transcribe.app inside the Transcribe folder, next to "bin" and "models", then click Check Again.'
+    : `Transcribe can't find its engine. Keep ${APP_FILE} inside the Transcribe folder, next to "${SETUP_NAME}" and "models", then click Check Again.`,
   linksLimitedPrompt: 'Video links need one more component',
   linksLimitedInstall: 'Install…',
   linksLimitedCaption: 'Everything else works — this only affects video links.',
@@ -158,6 +184,45 @@ const Copy = {
   // Update banner
   updateAvailable(version) { return `Version ${version} is available.`; },
   updateDownload: 'Download',
+
+  // Settings ▸ Updates. The app deliberately does NOT install anything by
+  // itself (see docs/RELEASING.md) — the automatic part is the *check*, and the
+  // caption has to say so or the toggle over-promises.
+  checkForUpdatesMenu: 'Check for Updates…',
+  settingsSectionUpdates: 'Updates',
+  settingsVersion(version) { return `Version ${version}`; },
+  settingsCheckNow: 'Check Now',
+  settingsAutoCheck: 'Check for updates automatically',
+  settingsAutoCheckCaption: 'Looks once each time Transcribe starts, and shows a banner when a new version exists. Nothing is downloaded or installed for you — you choose when to update.',
+  updateChecking: 'Checking…',
+  updateUpToDate: `You're on the latest version.`,
+  updateCheckFailed: "Couldn't check for updates just now — check your internet connection and try again.",
+  // The request DID complete and the answer was unusable (404 on a private or
+  // release-less repo, a rate-limit, a server error). Don't send someone to
+  // debug a connection that demonstrably works.
+  updateCheckUnavailable: "Couldn't check for updates just now — the update service didn't have an answer. Your connection is fine; try again later.",
+  updateCheckOff: `This copy was built locally, so it has no release to compare itself against. Release builds check on their own.`,
+
+  // Run Setup couldn't launch the setup script (mac: a .command bound to another
+  // app, a stripped exec bit, Gatekeeper). Never leave the button looking dead.
+  setupLaunchFailedTitle: `Couldn't open ${SETUP_NAME}`,
+  setupLaunchFailedBody(scriptPath) {
+    return IS_MAC
+      ? `Transcribe couldn't start the setup script automatically.\n\nOpen it yourself: double-click "setup.command" in the Transcribe folder. If macOS refuses ("unidentified developer"), Control-click it and choose Open.\n\n${scriptPath}`
+      : `Transcribe couldn't start the setup script automatically.\n\nOpen it yourself: double-click "Transcribe Setup" in the Transcribe folder.\n\n${scriptPath}`;
+  },
+  setupLaunchFailedShow: IS_MAC ? 'Show in Finder' : 'Show in File Explorer',
+  setupLaunchFailedOK: 'OK',
+  // The setup script isn't where the app is looking. On macOS this is usually
+  // App Translocation — a quarantined app launched straight from Downloads runs
+  // from a random read-only copy with no sibling files — and the cure is to move
+  // the folder and clear the quarantine, not to hunt for the script.
+  setupNotFoundTitle: `Transcribe can't find ${SETUP_NAME}`,
+  setupNotFoundBody(scriptPath) {
+    return IS_MAC
+      ? `Transcribe looked for setup.command next to itself and it isn't there.\n\nThis usually means Transcribe.app was opened straight out of the zip or on its own. Move the whole "Transcribe" folder somewhere like your Applications or Documents folder, then run this once in Terminal on that folder:\n\n    xattr -dr com.apple.quarantine /path/to/Transcribe\n\nThen open Transcribe.app from inside that folder again.\n\nLooked in: ${scriptPath}`
+      : `Transcribe looked for "Transcribe Setup" next to itself and it isn't there.\n\nKeep Transcribe.exe inside the "Transcribe" folder you unzipped, alongside "Transcribe Setup" and the "models" folder, then try again.\n\nLooked in: ${scriptPath}`;
+  },
 
   // Instagram login (in-app; File menu). Instagram gates most reels behind a
   // login, so downloading them needs a logged-in session.

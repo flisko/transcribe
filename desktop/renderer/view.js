@@ -45,6 +45,7 @@
     const s = snapshot;
     const phase = s.phase;
 
+    applyChrome(s.chrome);
     renderToolbar(s);
     renderBanner(s.banner);
 
@@ -87,6 +88,19 @@
       : (s.settings.language === 'auto' ? 'Auto-detect' : s.settings.language);
     const model = s.catalog.find((m) => m.sel === s.settings.model);
     $('modelName').textContent = model ? model.display : s.settings.model;
+  }
+
+  // The setup screen's three sentences name platform-specific things ("your
+  // Mac"/"your PC", Transcribe.app/.exe, the Terminal/a PowerShell window), so
+  // main composes them (snapshot.chrome) and the HTML only carries a default.
+  // They never change during a run — apply once, on the first snapshot.
+  let chromeApplied = false;
+  function applyChrome(chrome) {
+    if (chromeApplied || !chrome) return;
+    chromeApplied = true;
+    if (chrome.setupIntro) $('setupIntro').textContent = chrome.setupIntro;
+    if (chrome.engineMissing) $('engineMissing').textContent = chrome.engineMissing;
+    if (chrome.setupFootnote) $('setupFootnote').textContent = chrome.setupFootnote;
   }
 
   function renderSetup(deps) {

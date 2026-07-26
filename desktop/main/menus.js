@@ -11,12 +11,20 @@ function installAppMenu({ Menu, app, copy, actions }) {
     accelerator: 'CmdOrCtrl+,',
     click: () => actions.openSettings(),
   };
+  // Settings ▸ Updates is the last section of a scrolling pane, so give the
+  // check the conventional menu home too (mac: the app menu under About;
+  // Windows: File). It opens Settings so the answer is visible where it lands.
+  const updatesItem = {
+    label: copy.checkForUpdatesMenu,
+    click: () => actions.checkForUpdates(),
+  };
 
   const template = [
     ...(isMac ? [{
       label: app.name,
       submenu: [
         { role: 'about' },
+        updatesItem,
         { type: 'separator' },
         settingsItem,
         { type: 'separator' },
@@ -41,6 +49,7 @@ function installAppMenu({ Menu, app, copy, actions }) {
         { label: copy.cancelItemMenu, accelerator: 'CmdOrCtrl+.', click: () => actions.cancelSelected() },
         ...(isMac ? [] : [
           { type: 'separator' },
+          updatesItem,
           settingsItem,
           { type: 'separator' },
           { role: 'quit' },

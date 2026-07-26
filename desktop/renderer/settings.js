@@ -34,6 +34,20 @@
     $('folderName').textContent = s.settings.downloadFolderDisplay || '';
     $('folderIcon').title = s.settings.downloadFolder || '';
     $('folderName').title = s.settings.downloadFolder || '';
+
+    renderUpdates(s.update);
+  }
+
+  // Version, the manual check, and the auto-check toggle. Every sentence here
+  // arrives composed (C4); the renderer only decides what is visible.
+  function renderUpdates(u) {
+    if (!u) return;
+    $('versionLabel').textContent = u.versionLabel || '';
+    $('checkUpdatesBtn').disabled = !u.canCheck;
+    $('updateStatus').textContent = u.statusText || '';
+    $('updateStatus').hidden = !u.statusText;
+    $('downloadUpdateBtn').hidden = !u.downloadUrl;
+    setSwitch($('autoUpdateSwitch'), !!u.autoCheck);
   }
 
   function renderModels(s) {
@@ -80,6 +94,13 @@
     if (snapshot) invoke('setSetting', { key: 'notifyOnFinish', value: !snapshot.settings.notifyOnFinish });
   });
   $('chooseFolderBtn').addEventListener('click', () => invoke('chooseDownloadFolder'));
+  $('checkUpdatesBtn').addEventListener('click', () => invoke('checkForUpdates'));
+  $('downloadUpdateBtn').addEventListener('click', () => invoke('openReleasePage'));
+  $('autoUpdateSwitch').addEventListener('click', () => {
+    if (snapshot && snapshot.update) {
+      invoke('setSetting', { key: 'autoCheckUpdates', value: !snapshot.update.autoCheck });
+    }
+  });
 
   $('langBtn').addEventListener('click', () => {
     if (!snapshot) return;

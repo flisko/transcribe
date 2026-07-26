@@ -16,13 +16,18 @@ GitHub releases page)? Three steps:
 
 1. **Unzip it.** You get a `Transcribe` folder — move it wherever you like
    (or just leave it in Downloads).
-2. **Let macOS trust it.** Everything downloaded from the internet is
-   quarantined, so macOS blocks the app and `setup.command` the first time
-   ("from an unidentified developer"). Run this once in Terminal, pointing at
-   wherever the folder from step 1 ended up:
+2. **Let macOS trust it — don't skip this.** Everything downloaded from the
+   internet is quarantined, so macOS blocks the app and `setup.command` the
+   first time ("from an unidentified developer"). Worse, a quarantined app
+   opened straight from the zip is run from a hidden read-only copy, where it
+   can't see `setup.command` sitting next to it — that's why **Run Setup…** can
+   look like it does nothing. Move the folder from step 1 where you want it,
+   then run this once in Terminal, pointing at it:
    ```bash
    xattr -dr com.apple.quarantine ~/Downloads/Transcribe
    ```
+   Then open `Transcribe.app` **from inside that folder**.
+
    Prefer to skip Terminal? Double-click `setup.command`, let macOS refuse,
    then open **System Settings → Privacy & Security**, scroll down, and click
    **Open Anyway** (you may need to do the same for `Transcribe.app` later).
@@ -79,8 +84,9 @@ file"** in Settings, where you can also choose which folder downloads go to.
 ### Settings
 
 The gear button (or Cmd+, on macOS, Ctrl+, on Windows) holds the handful of
-options: model, language, the keep-video toggle, the download folder, and
-whether to notify you when the queue finishes.
+options: model, language, the keep-video toggle, the download folder, whether
+to notify you when the queue finishes, and — at the bottom — which version
+you're running plus the update controls.
 
 ### Supported formats
 
@@ -101,12 +107,26 @@ Balkan languages, stick with **Best quality**.
 
 ## Updates
 
-When a new version is released, a banner appears at the top of the window —
-click **Download** to grab the zip for your system. Updates never include the
-models: replace the app, keep your `models` folder, and nothing re-downloads.
-The check is quiet and never interrupts your work; if it can't reach the
-internet, nothing happens. (It activates once the project is published on
-GitHub — see `docs/RELEASING.md`. Apps built locally skip the check entirely.)
+**Transcribe never installs anything by itself.** It checks whether a newer
+version exists and tells you; downloading and replacing the folder stays your
+decision. That's deliberate — you always know exactly what's on your machine.
+
+- **Which version am I on?** Settings → **Updates** shows it, and macOS also
+  shows it under  → About Transcribe.
+- **A new version exists** → a banner appears at the top of the window. Click
+  **Download** to open the release page and grab the zip for your system.
+- **Check whenever you like** → Settings → Updates → **Check Now**, or the
+  **Check for Updates…** menu item. It tells you what it found, including when
+  it couldn't reach the internet.
+- **Don't want the automatic check?** Turn off **Check for updates
+  automatically** in the same place. Nothing phones home after that; Check Now
+  still works when you ask for it.
+
+Updating never touches the models: replace the app, keep your `models` folder
+(and `tools` on Windows), and nothing re-downloads. The automatic check runs
+once at launch, is silent when it fails, and never interrupts your work. Apps
+built locally have no release to compare against and skip it entirely — see
+`docs/RELEASING.md`.
 
 ## From the Terminal (macOS only)
 

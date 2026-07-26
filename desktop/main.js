@@ -17,7 +17,7 @@ const catalog = require('./shared/catalog');
 const languages = require('./shared/languages');
 const { createQueue, createSystemAdapter } = require('./main/queue');
 const { createSettings } = require('./main/settings');
-const { checkForUpdate } = require('./main/update');
+const { checkForUpdateResult } = require('./main/update');
 const menus = require('./main/menus');
 const { registerIpc } = require('./main/ipc');
 const { filterStartupArgs, resolveOpenArg } = require('./main/startup-args');
@@ -65,7 +65,11 @@ if (!gotLock) {
     showMainWindow();
     // Windows: files/URLs arrive as argv of the second launch. Relative paths
     // are relative to the SECOND process's cwd (workingDirectory), not ours.
-    const args = filterStartupArgs(argv, { packaged: true })
+    // The second process ran the same binary we did, so its argv has the same
+    // shape — packaged drops argv[0], dev drops argv[0]+the main script. (A
+    // hardcoded `packaged: true` made `npm start` treat the dev launcher's "."
+    // as a file to open, adding a bogus row for the app directory.)
+    const args = filterStartupArgs(argv, { packaged: app.isPackaged })
       .map((a) => resolveOpenArg(a, workingDirectory));
     enqueueOpens(args);
   });
@@ -85,8 +89,13 @@ function enqueueOpens(list) {
 }
 
 function deliverOpen(item) {
-  if (/^https?:\/\//i.test(item)) queue.addLink(item);
-  else if (fs.existsSync(item)) queue.addFiles([item]);
+  if (/^https?:\/\//i.test(item)) { queue.addLink(item); return; }
+  // A FILE, not merely something that exists: dragging a folder onto the exe (or
+  // a stray directory operand in argv) would otherwise enqueue a row that can
+  // only fail with the engine's "not a file" error.
+  let isFile = false;
+  try { isFile = fs.statSync(item).isFile(); } catch { /* gone or unreadable */ }
+  if (isFile) queue.addFiles([item]);
 }
 
 // MARK: Windows
@@ -281,22 +290,118 @@ function chooseDownloadFolder() {
   }).catch(() => { });
 }
 
+// ABSOLUTE System32 path, never the bare name: a bare 'cmd.exe' is resolved
+// through the child search path, which on Windows includes the app's own
+// directory and the cwd — both writable by the user, so a planted cmd.exe would
+// run instead. Same exe-planting footgun engine.js avoids for taskkill and
+// queue.js for whoami/icacls.
+const CMD_EXE = process.platform === 'win32'
+  ? path.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'cmd.exe')
+  : 'cmd.exe';
+
+// macOS: `shell.openPath('…/setup.command')` was doing NOTHING for a real user.
+// It hands the file to LaunchServices' default handler, which silently fails
+// whenever any of these hold — and for a folder unzipped from a release, at
+// least one usually does:
+//   • the script lost its executable bit (a plain `unzip`, a copy through
+//     iCloud/Drive, or an editor rewriting it) — Terminal refuses to run it;
+//   • the download carries com.apple.quarantine — Gatekeeper blocks the
+//     unsigned script and the user never sees why;
+//   • .command is bound to some other app (an editor) in LaunchServices.
+// openPath's promise carries the reason, and it was being discarded.
+//
+// So: repair what we own (exec bit + the quarantine flag on OUR OWN sibling
+// script — exactly the `xattr -dr` the README asks users to run by hand), then
+// hand it to Terminal EXPLICITLY rather than trusting the file association. Only
+// if all of that fails do we fall back to openPath, and a failure now tells the
+// user instead of looking like a dead button.
+// Run a short helper to completion. Never rejects — every one of these is
+// best-effort repair, and its failure must not stop the next step.
+function runQuietly(bin, args) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bin, args, { stdio: 'ignore' });
+    } catch { resolve(false); return; }
+    child.on('error', () => resolve(false));
+    child.on('close', (code) => resolve(code === 0));
+  });
+}
+
+async function openMacSetup(script) {
+  try { fs.chmodSync(script, 0o755); } catch { /* not ours / read-only volume */ }
+  // AWAIT the de-quarantine before opening — otherwise `open` races it and
+  // Gatekeeper can still see the flag. `-d` exits non-zero when the attribute
+  // isn't there, which is the normal case; the result is deliberately ignored.
+  await runQuietly('/usr/bin/xattr', ['-d', 'com.apple.quarantine', script]);
+  // -a Terminal, not the default handler: a .command bound to an editor (or to
+  // nothing) is a common reason the button appeared to do nothing.
+  return runQuietly('/usr/bin/open', ['-a', 'Terminal', script]);
+}
+
 function runSetup() {
   let root;
   try { root = require('./main/paths').folderRoot(); } catch { return; }
-  if (process.platform === 'win32') {
-    const bat = path.join(root, 'Transcribe Setup.bat');
+  const isWin = process.platform === 'win32';
+  const script = path.join(root, isWin ? 'Transcribe Setup.bat' : 'setup.command');
+
+  // BOTH platforms: if the setup file isn't where folderRoot() looks, say so
+  // ourselves. Handing a missing path to the OS launcher gets the user a raw
+  // shell error ("Windows cannot find '…\Transcribe Setup.bat'", plus a stray
+  // cmd window) or, on macOS, nothing at all — and neither names the folder we
+  // actually searched, which is the one fact needed to fix it. The cause differs
+  // per platform (win: the exe was copied out of its folder; mac: usually App
+  // Translocation, where a quarantined app launched from Downloads runs from a
+  // read-only copy with no sibling files), so the message does too.
+  if (!fs.existsSync(script)) { setupNotFound(script); return; }
+
+  if (isWin) {
     try {
-      spawn('cmd.exe', ['/c', 'start', '', bat], { detached: true, stdio: 'ignore' }).unref();
-    } catch { }
-  } else {
-    shell.openPath(path.join(root, 'setup.command'));
+      const child = spawn(CMD_EXE, ['/c', 'start', '', script], { detached: true, stdio: 'ignore' });
+      // A failed spawn arrives ASYNCHRONOUSLY as an 'error' event the try/catch
+      // can't see; with no listener Node re-throws it as an uncaught exception
+      // and the whole app dies the moment the user clicks Run Setup.
+      child.on('error', () => setupLaunchFailed(script));
+      child.unref();
+    } catch { setupLaunchFailed(script); }
+    return;
   }
+  openMacSetup(script)
+    .then((ok) => (ok ? null : shell.openPath(script)))
+    .then((err) => { if (typeof err === 'string' && err) setupLaunchFailed(script); })
+    .catch(() => setupLaunchFailed(script));
+}
+
+function setupDialog(message, detail, script) {
+  const opts = {
+    type: 'warning',
+    buttons: [copy.setupLaunchFailedShow, copy.setupLaunchFailedOK],
+    defaultId: 0,
+    cancelId: 1,
+    message,
+    detail,
+  };
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const choice = win ? dialog.showMessageBoxSync(win, opts) : dialog.showMessageBoxSync(opts);
+  // "Show in Finder" on a path that doesn't exist reveals nothing; fall back to
+  // the folder we were looking in, which is the thing the user needs to see.
+  if (choice !== 0) return;
+  if (fs.existsSync(script)) shell.showItemInFolder(script);
+  else shell.openPath(path.dirname(script));
+}
+
+// A button that does nothing is the worst outcome; say what happened and give
+// the one instruction that always works.
+function setupLaunchFailed(script) {
+  setupDialog(copy.setupLaunchFailedTitle, copy.setupLaunchFailedBody(script), script);
+}
+
+function setupNotFound(script) {
+  setupDialog(copy.setupNotFoundTitle, copy.setupNotFoundBody(script), script);
 }
 
 function openReleasePage() {
-  const banner = queue && queue.getBanner();
-  const url = banner && banner.url;
+  const url = queue && queue.getUpdateUrl();
   if (typeof url === 'string' && /^https:\/\//i.test(url)) shell.openExternal(url);
 }
 
@@ -349,18 +454,61 @@ function rowMenu({ id, x, y }) {
 
 // MARK: Launch
 
-function startUpdateCheck() {
-  if (updateChecked) return;   // banner at most once per launch
-  updateChecked = true;
-  let slug = null;
-  try { slug = require('./package.json').updateRepo || null; } catch { }
-  if (!slug) return;
-  checkForUpdate({ slug, currentVersion: app.getVersion() })
-    .then((info) => { if (info && queue) queue.setBanner(info); })
-    .catch(() => { });
+function updateSlug() {
+  try { return require('./package.json').updateRepo || null; } catch { return null; }
+}
+
+let updateInFlight = false;
+
+// One code path for both the automatic launch check and the Settings ▸ Check Now
+// button. `manual` only decides whether the once-per-launch guard and the
+// auto-check preference apply — pressing the button always checks.
+function runUpdateCheck({ manual }) {
+  if (!queue) return;
+  const slug = updateSlug();
+  if (!slug) { queue.setUpdateState({ supported: false, checking: false }); return; }
+  queue.setUpdateState({ supported: true });
+  if (updateInFlight) return;
+  if (!manual) {
+    if (updateChecked) return;                            // banner at most once per launch
+    if (!settings.get('autoCheckUpdates')) return;        // user turned the check off
+    updateChecked = true;
+  }
+  updateInFlight = true;
+  queue.setUpdateState({ checking: true });
+  checkForUpdateResult({ slug, currentVersion: app.getVersion() })
+    .then((r) => {
+      updateInFlight = false;
+      if (!queue) return;
+      queue.setUpdateState({
+        checking: false,
+        result: r.status === 'off' ? 'failed' : r.status,
+        reason: r.reason || null,
+        latestVersion: r.version,
+        url: r.url,
+      });
+      // The banner is the automatic, dismissible notice; a manual check raises
+      // it too, so the main window agrees with what Settings just said.
+      // (Lowering it again when a later check finds we're current is the queue's
+      // job — setUpdateState owns that invariant, so no caller can forget it.)
+      if (r.status === 'available') queue.setBanner({ version: r.version, url: r.url });
+    })
+    .catch(() => {
+      updateInFlight = false;
+      if (queue) queue.setUpdateState({ checking: false, result: 'failed', reason: 'network' });
+    });
 }
 
 app.whenReady().then(() => {
+  // A SECOND instance still reaches whenReady: app.quit() above is asynchronous
+  // and this handler is registered unconditionally. Without this guard the
+  // losing process builds a whole queue — and its constructor sweeps the job
+  // base and the download folder's staging dirs, which belong to the FIRST,
+  // still-running instance. Launching the app twice mid-download would delete
+  // the live download out from under it. Nothing after this line may run in a
+  // process that does not own the single-instance lock.
+  if (!gotLock) return;
+
   settings = createSettings({
     file: path.join(app.getPath('userData'), 'settings.json'),
     downloadsDir: app.getPath('downloads'),
@@ -376,13 +524,14 @@ app.whenReady().then(() => {
     getWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
     instagramCookies: (url) => instagram.cookiesForUrl(url),
   });
-  queue = createQueue({ engine, settings, sys });
+  queue = createQueue({ engine, settings, sys, appVersion: app.getVersion() });
   queue.onChange(sendState);
 
   registerIpc({
     ipcMain, queue, settings, catalog, languages,
     actions: {
       browse, chooseDownloadFolder, runSetup, openReleasePage, rowMenu, openSettingsWindow,
+      checkForUpdates: () => runUpdateCheck({ manual: true }),
     },
   });
 
@@ -395,6 +544,9 @@ app.whenReady().then(() => {
       cancelSelected: () => queue.cancelSelected(),
       showWindow: showMainWindow,
       connectInstagram, disconnectInstagram,
+      // Open Settings first so the result of the check is on screen when it
+      // lands, then check.
+      checkForUpdates: () => { openSettingsWindow(); runUpdateCheck({ manual: true }); },
     },
   });
 
@@ -418,5 +570,5 @@ app.whenReady().then(() => {
     enqueueOpens(args);
   }
   for (const item of pendingOpens.splice(0)) deliverOpen(item);
-  startUpdateCheck();
+  runUpdateCheck({ manual: false });
 });

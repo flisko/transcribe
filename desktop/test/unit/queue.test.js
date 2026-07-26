@@ -66,6 +66,18 @@ const stubCopy = {
   notifMixedBody: (done, failed) => `${done} done, ${failed} failed. Open Transcribe for details.`,
   notifFailedTitle: 'Transcription failed',
   notifFailedBody: (name) => `"${name}" couldn't be transcribed. Open Transcribe for details.`,
+  // Platform-varying setup chrome the snapshot forwards to the renderer.
+  setupIntro: 'Transcribe needs a few free components before it can start.',
+  engineMissing: "Transcribe can't find its engine.",
+  setupFootnote: 'Setup opens a console and takes a few minutes.',
+  // Settings ▸ Updates.
+  settingsVersion: (v) => `Version ${v}`,
+  updateAvailable: (v) => `Version ${v} is available.`,
+  updateChecking: 'Checking…',
+  updateUpToDate: "You're on the latest version.",
+  updateCheckFailed: "Couldn't check for updates just now.",
+  updateCheckUnavailable: 'The update service had no answer.',
+  updateCheckOff: 'This copy was built locally.',
 };
 
 const stubCatalog = {
@@ -149,6 +161,7 @@ function harness(t, opts = {}) {
     copy: stubCopy, catalog: stubCatalog, languages: stubLanguages, logic: stubLogic,
     modelPresent: opts.modelPresent || (() => true),
     delays: { ...TEST_DELAYS, ...(opts.delays || {}) },
+    appVersion: opts.appVersion === undefined ? '1.0.42' : opts.appVersion,
   });
   queue.probeDeps();
   const mkFile = (name, content = 'media-bytes') => {
@@ -596,8 +609,12 @@ test('snapshot shape: C4 fields, banner lifecycle, clear done, selection hint', 
   const h = harness(t);
   let snap = h.queue.snapshot();
   assert.deepStrictEqual(Object.keys(snap).sort(),
-    ['banner', 'catalog', 'deps', 'footer', 'items', 'languages', 'phase',
-     'selectionHint', 'settings'].sort());
+    ['banner', 'catalog', 'chrome', 'deps', 'footer', 'items', 'languages', 'phase',
+     'selectionHint', 'settings', 'update'].sort());
+  // Platform-varying static chrome is composed here (C4), not in the renderer.
+  assert.deepStrictEqual(Object.keys(snap.chrome).sort(),
+    ['engineMissing', 'setupFootnote', 'setupIntro']);
+  for (const s of Object.values(snap.chrome)) assert.strictEqual(typeof s, 'string');
   assert.deepStrictEqual(snap.deps, {
     whisperOK: true, ffmpegOK: true, ytDlpOK: true, modelsOK: true, bestModelOK: true,
     linksLimited: false, setupNeeded: false, folderOK: true,
@@ -632,6 +649,83 @@ test('snapshot shape: C4 fields, banner lifecycle, clear done, selection hint', 
   h.queue.clearDone();
   assert.strictEqual(h.items().length, 0);
   assert.strictEqual(h.queue.snapshot().selectionHint.clearDoneVisible, false);
+});
+
+// Settings ▸ Updates. The panel must survive a dismissed banner, must never
+// claim "you're on the latest version" when the check simply failed, and must
+// say something useful in a locally built app that has no release to compare to.
+test('update panel: version, auto-check, and every check outcome', async (t) => {
+  const h = harness(t);
+
+  // Before main reports an update source: version shown, checking impossible.
+  let u = h.queue.snapshot().update;
+  assert.strictEqual(u.versionLabel, 'Version 1.0.42');
+  assert.strictEqual(u.currentVersion, '1.0.42');
+  assert.strictEqual(u.autoCheck, true, 'the launch check defaults to on');
+  assert.strictEqual(u.supported, false);
+  assert.strictEqual(u.canCheck, false);
+  assert.strictEqual(u.statusText, 'This copy was built locally.');
+  assert.strictEqual(u.downloadUrl, null);
+
+  h.queue.setUpdateState({ supported: true });
+  u = h.queue.snapshot().update;
+  assert.strictEqual(u.canCheck, true);
+  assert.strictEqual(u.statusText, null, 'nothing to say until a check has run');
+
+  h.queue.setUpdateState({ checking: true });
+  u = h.queue.snapshot().update;
+  assert.strictEqual(u.statusText, 'Checking…');
+  assert.strictEqual(u.canCheck, false, 'no double-checking while one is in flight');
+
+  h.queue.setUpdateState({ checking: false, result: 'upToDate', latestVersion: null, url: null });
+  u = h.queue.snapshot().update;
+  assert.strictEqual(u.statusText, "You're on the latest version.");
+  assert.strictEqual(u.downloadUrl, null);
+
+  // A failed check must NOT read as "up to date" — and must not blame the
+  // user's connection when the server simply had no answer (a private repo
+  // 404s anonymously on every launch).
+  h.queue.setUpdateState({ result: 'failed', reason: 'network' });
+  assert.strictEqual(h.queue.snapshot().update.statusText,
+    "Couldn't check for updates just now.");
+  h.queue.setUpdateState({ result: 'failed', reason: 'server' });
+  assert.strictEqual(h.queue.snapshot().update.statusText,
+    'The update service had no answer.');
+
+  h.queue.setUpdateState({ result: 'available', latestVersion: '1.0.99', url: 'https://example.com/r', reason: null });
+  u = h.queue.snapshot().update;
+  assert.strictEqual(u.statusText, 'Version 1.0.99 is available.');
+  assert.strictEqual(u.downloadUrl, 'https://example.com/r');
+
+  // The banner is dismissible; the panel and the Download target are not.
+  h.queue.setBanner({ version: '1.0.99', url: 'https://example.com/r' });
+  assert.strictEqual(h.queue.getUpdateUrl(), 'https://example.com/r');
+  h.queue.dismissBanner();
+  assert.strictEqual(h.queue.snapshot().banner, null);
+  assert.strictEqual(h.queue.snapshot().update.statusText, 'Version 1.0.99 is available.');
+  assert.strictEqual(h.queue.getUpdateUrl(), 'https://example.com/r',
+    'Download still works after the banner is dismissed');
+
+  // A release can be pulled. Once a later check says we're current, the Download
+  // target must NOT still be the withdrawn release's page — the freshest check
+  // wins over a banner that outlived its finding.
+  h.queue.setBanner({ version: '1.0.99', url: 'https://example.com/withdrawn' });
+  h.queue.setUpdateState({ result: 'upToDate', latestVersion: null, url: null });
+  assert.strictEqual(h.queue.snapshot().update.downloadUrl, null);
+  assert.strictEqual(h.queue.getUpdateUrl(), null,
+    'no dead link once the app knows it is current');
+
+  // Turning the preference off is reflected straight away.
+  h.queue.snapshot();
+  h.settings.set('autoCheckUpdates', false);
+  assert.strictEqual(h.queue.snapshot().update.autoCheck, false);
+});
+
+test('update panel: no app version injected → no version label, no crash', async (t) => {
+  const h = harness(t, { appVersion: null });
+  const u = h.queue.snapshot().update;
+  assert.strictEqual(u.versionLabel, null);
+  assert.strictEqual(u.currentVersion, null);
 });
 
 test('cancel of a single active item; startAgain reruns it', async (t) => {

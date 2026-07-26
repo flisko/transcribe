@@ -207,6 +207,13 @@ function createQueue(opts) {
   let selection = null;
   let flashId = null;
   let banner = null;
+  // Settings ▸ Updates. `banner` is the dismissible top-of-window notice; this is
+  // the persistent panel, which must keep saying "a new version exists" after the
+  // banner has been dismissed, and has to distinguish "checked, we're current"
+  // from "couldn't check". main.js drives it (it owns the network call and the
+  // app version); the queue only stores it and composes the sentence.
+  const appVersion = opts.appVersion || null;
+  let update = { supported: false, checking: false, result: null, reason: null, latestVersion: null, url: null };
 
   let transcribingID = null;
   let downloadingID = null;
@@ -254,6 +261,19 @@ function createQueue(opts) {
   // same whenReady tick) — using the hoisted rmrf. Best-effort; a locked leftover
   // just waits for the next run.
   try { for (const n of fs.readdirSync(jobBase)) rmrf(path.join(jobBase, n)); } catch { /* base absent — nothing to sweep */ }
+  // Same reclaim for the DOWNLOAD side. dlGet stages into
+  // `<downloadFolder>/.transcribe-dl.<pid>.<n>` and removes it in a finally, so
+  // a normal finish/cancel/failure never leaks. A crash, force-kill, or power
+  // loss skips that finally and strands a half-downloaded video in the user's
+  // Downloads folder forever. Safe for the same reason as the job-dir sweep: the
+  // app is single-instance, so at construction no download of ours is live, and
+  // the prefix belongs to this app alone.
+  try {
+    const dest = settings.downloadFolder();
+    for (const n of fs.readdirSync(dest)) {
+      if (n.startsWith('.transcribe-dl.')) rmrf(path.join(dest, n));
+    }
+  } catch { /* folder gone or unreadable — nothing to sweep */ }
 
   function byId(id) { return items.find((it) => it.id === id) || null; }
   function indexOf(id) { return items.findIndex((it) => it.id === id); }
@@ -737,11 +757,10 @@ function createQueue(opts) {
     const handle = jobs.get(id);
     if (isActive(state) && handle) {
       handle.cancel();
-      // Downloads: sweep this run's partial files. Transcripts: remove the
-      // partial .txt/.srt whisper may have half-written.
-      if (state === 'downloading') {
-        removePartFiles(it.destFolder || settings.downloadFolder(), it.stageStartedAt);
-      }
+      // Downloads need no sweep: yt-dlp writes everything (including .part /
+      // .ytdl) inside the engine's private staging dir, which dlGet's finally
+      // removes with retries once the killed child releases it. Transcripts do:
+      // remove the partial .txt/.srt whisper may have half-written.
       if (state === 'transcribing' || state === 'preparing') {
         removeFreshOutputs(it);
       }
@@ -821,13 +840,7 @@ function createQueue(opts) {
     if (!it) return;
     if (isActive(it.state)) cancel(id);
     it = byId(id);
-    if (it) {
-      // Removing a link row gives up its resume data — sweep .part files.
-      if (it.source.type === 'link' && it.state !== 'done') {
-        removePartFiles(it.destFolder || settings.downloadFolder(), it.startedAt);
-      }
-      items.splice(indexOf(id), 1);
-    }
+    if (it) items.splice(indexOf(id), 1);
     if (selection === id) selection = null;
     pump();
     changed();
@@ -846,19 +859,6 @@ function createQueue(opts) {
     if (selection == null) return false;
     const it = byId(selection);
     return !!it && isActive(it.state);
-  }
-
-  function removePartFiles(folder, since) {
-    let names;
-    try { names = fs.readdirSync(folder); } catch { return; }
-    const cutoff = since == null ? Infinity : since - 2000;
-    for (const name of names) {
-      if (!name.endsWith('.part') && !name.endsWith('.ytdl')) continue;
-      const p = path.join(folder, name);
-      let mtime;
-      try { mtime = fs.statSync(p).mtimeMs; } catch { continue; }
-      if (mtime >= cutoff) { try { fs.unlinkSync(p); } catch { } }
-    }
   }
 
   function removeFreshOutputs(it) {
@@ -1119,6 +1119,37 @@ function createQueue(opts) {
     };
   }
 
+  // C4: every sentence the Updates panel shows is composed here, so the renderer
+  // only paints. `statusText` is null when there is genuinely nothing to say —
+  // a supported build that hasn't been asked to check yet.
+  function updateStatusText() {
+    if (update.checking) return copy.updateChecking;
+    if (!update.supported) return copy.updateCheckOff;
+    if (update.result === 'available') return copy.updateAvailable(update.latestVersion);
+    if (update.result === 'upToDate') return copy.updateUpToDate;
+    // "Check your internet connection" is only fair when the request never
+    // completed. A 404 (private repo, no releases) or a 403 rate-limit means the
+    // connection worked fine and the user would be debugging the wrong thing.
+    if (update.result === 'failed') {
+      return update.reason === 'server' ? copy.updateCheckUnavailable : copy.updateCheckFailed;
+    }
+    return null;
+  }
+
+  function updateView() {
+    return {
+      versionLabel: appVersion ? copy.settingsVersion(appVersion) : null,
+      currentVersion: appVersion,
+      autoCheck: !!settings.get('autoCheckUpdates'),
+      supported: !!update.supported,
+      checking: !!update.checking,
+      canCheck: !!update.supported && !update.checking,
+      statusText: updateStatusText(),
+      // Only offer Download for a real, still-current "available" result.
+      downloadUrl: update.result === 'available' ? (update.url || null) : null,
+    };
+  }
+
   function footerText() {
     const total = items.length;
     if (transcribingID != null) {
@@ -1172,6 +1203,16 @@ function createQueue(opts) {
       })),
       languages: (languages.displayOrder || languages.all).map((l) => ({ code: l.code, name: l.name })),
       selectionHint: { clearDoneVisible: hasFinishedRows() && !selectionIsInProgress() },
+      update: updateView(),
+      // Static chrome whose wording differs per platform (C4: main composes every
+      // user-visible string). index.html ships the macOS sentences as its
+      // pre-paint default; the renderer overwrites these from the first snapshot
+      // so a Windows user isn't told the app "runs on your Mac".
+      chrome: {
+        setupIntro: copy.setupIntro,
+        engineMissing: copy.engineMissing,
+        setupFootnote: copy.setupFootnote,
+      },
     };
   }
 
@@ -1200,6 +1241,22 @@ function createQueue(opts) {
     },
     dismissBanner() { banner = null; changed(); },
     getBanner: () => banner,
+    setUpdateState(partial) {
+      update = { ...update, ...(partial || {}) };
+      // The banner and the panel are two views of ONE finding, so keep them
+      // consistent here rather than trusting every caller to remember. Learning
+      // we're current retires the notice (a release can be pulled or rolled
+      // back, and a banner advertising a version that no longer exists hands the
+      // user a dead Download link). A FAILED check changes nothing — a transient
+      // outage must not erase a real finding.
+      if (update.result === 'upToDate') banner = null;
+      changed();
+    },
+    // The release page the Download buttons open. The LAST CHECK wins: a banner
+    // can outlive the finding that raised it (a pulled release), and sending the
+    // user to a dead page is worse than sending them nowhere. The banner is the
+    // fallback, for when the panel has been reset but the notice still stands.
+    getUpdateUrl: () => (update.result === 'available' ? update.url : null) || (banner && banner.url) || null,
     stateOf(id) { const it = byId(id); return it ? it.state : null; },
     handleWake,
     prepareForTermination,

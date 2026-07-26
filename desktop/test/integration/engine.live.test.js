@@ -6,13 +6,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 require('../unit/engine.shim.js').ensureShared(); // no-op once shared/ landed
 const engine = require('../../main/engine.js');
+const enginePaths = require('../../main/paths.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const SAMPLE = path.join(REPO_ROOT, 'IMG_2827.mov');
@@ -84,11 +85,25 @@ async function waitFor(cond, timeoutMs, label) {
   assert.ok(cond(), `timed out waiting for: ${label}`);
 }
 
-function ffprobeCodec(file) {
-  return execFileSync('ffprobe', [
-    '-v', 'error', '-select_streams', 'a:0',
-    '-show_entries', 'stream=codec_name', '-of', 'default=nw=1:nk=1', file,
-  ], { encoding: 'utf8', env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || ''}` } }).trim();
+// Audio codec of a finished download, read with the app's OWN ffmpeg.
+//
+// WHY not ffprobe: setup.ps1 installs ffmpeg with -ExeOnly, so tools/win/ffmpeg
+// holds ffmpeg.exe and nothing else — there is no ffprobe on a Windows install
+// or on the CI runner. The previous bare `ffprobe` call (with a hardcoded
+// Homebrew PATH) only ever resolved on a dev Mac, and would have thrown ENOENT
+// here on any run where the download actually succeeded.
+//
+// ffmpeg with no output file prints the stream table to stderr and exits
+// non-zero — that is the expected path, so spawnSync (not execFileSync).
+function audioCodec(file) {
+  const bin = enginePaths.findTool('ffmpeg');
+  assert.ok(bin, 'ffmpeg must be installed for the integration suite');
+  const r = spawnSync(bin, ['-hide_banner', '-nostdin', '-i', file], {
+    encoding: 'utf8', env: enginePaths.childEnv(), windowsHide: true,
+  });
+  const out = `${r.stderr || ''}\n${r.stdout || ''}`;
+  const m = /Stream #\d+:\d+.*: Audio: ([A-Za-z0-9_]+)/.exec(out);
+  return m ? m[1] : out.trim();
 }
 
 function tmpLogsNewerThan(t0) {
@@ -186,7 +201,7 @@ test('dlGet audio: zoo video → .m4a in dest, aac stream, staging cleaned', asy
   assert.ok(file.endsWith('.m4a'), 'm4a extension');
   assert.ok(file.includes('[jNQXAC9IVRw]'), 'id in filename');
   assert.ok(fs.statSync(file).size > 0, 'non-empty');
-  assert.equal(ffprobeCodec(file), 'aac');
+  assert.equal(audioCodec(file), 'aac');
   assert.equal(pcts[pcts.length - 1], 100, 'reached 100 after move');
   assert.ok(pcts.filter((p) => p > 0 && p < 100).every((p) => p <= 99), 'held ≤99 until final path');
   const leftovers = fs.readdirSync(dest).filter((n) => n.startsWith('.transcribe-dl.'));

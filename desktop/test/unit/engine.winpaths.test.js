@@ -16,7 +16,8 @@ const path = require('path');
 
 require('./engine.shim.js').ensureShared();
 const { _internals } = require('../../main/engine.js');
-const { whisperOutputPlan, moveOutput } = _internals;
+const copy = require('../../shared/copy.js');
+const { whisperOutputPlan, moveOutput, moveOutputWithRetry, outputWriteError } = _internals;
 
 const isAscii = (s) => /^[\x00-\x7F]*$/.test(s);
 
@@ -165,4 +166,103 @@ test('moveOutput: non-EXDEV errors propagate', () => {
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
+});
+
+// ---- locked destination (measured on real Windows: rename onto a file another
+// process holds open throws EPERM; copyFileSync onto it throws EBUSY) ---------
+
+// Defender/the indexer can hold a just-written file for a beat. Those clear, so
+// the lock codes are retried before the move is called a failure.
+test('moveOutputWithRetry: a transient lock is retried, then succeeds', async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'winpaths-retry-'));
+  const realRename = fs.renameSync;
+  let calls = 0;
+  try {
+    const from = path.join(d, 'out.txt');
+    const to = path.join(d, 'Čćžšđ.txt');
+    fs.writeFileSync(from, 'body');
+    fs.renameSync = (a, b) => {
+      calls += 1;
+      if (calls < 3) { const e = new Error('EBUSY'); e.code = 'EBUSY'; throw e; }
+      return realRename(a, b);
+    };
+    await moveOutputWithRetry(from, to, 4, 1);
+    assert.equal(calls, 3, 'retried twice before succeeding');
+    assert.equal(fs.readFileSync(to, 'utf8'), 'body');
+  } finally {
+    fs.renameSync = realRename;
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('moveOutputWithRetry: a lock that never clears gives up after the last attempt', async () => {
+  const realRename = fs.renameSync;
+  let calls = 0;
+  try {
+    fs.renameSync = () => { calls += 1; const e = new Error('EPERM'); e.code = 'EPERM'; throw e; };
+    await assert.rejects(moveOutputWithRetry('a', 'b', 3, 1), (e) => e.code === 'EPERM');
+    assert.equal(calls, 3, 'exactly the requested number of attempts');
+  } finally {
+    fs.renameSync = realRename;
+  }
+});
+
+test('moveOutputWithRetry: a non-lock error fails immediately (no pointless waiting)', async () => {
+  const realRename = fs.renameSync;
+  let calls = 0;
+  try {
+    fs.renameSync = () => { calls += 1; const e = new Error('ENOENT'); e.code = 'ENOENT'; throw e; };
+    await assert.rejects(moveOutputWithRetry('a', 'b', 4, 1), (e) => e.code === 'ENOENT');
+    assert.equal(calls, 1);
+  } finally {
+    fs.renameSync = realRename;
+  }
+});
+
+// The whole point: the row's status line must never read
+// "EPERM: operation not permitted, rename 'C:\…\out.txt' -> …".
+test('outputWriteError: a locked destination names the file to close, raw fs text only in details', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'winpaths-locked-'));
+  try {
+    // The destination EXISTS -> something is holding it open.
+    const dest = path.join(d, 'Čćžšđ.txt');
+    fs.writeFileSync(dest, 'previous transcript');
+    const e = Object.assign(new Error(`EPERM: operation not permitted, rename 'C:\\w\\out.txt' -> '${dest}'`),
+      { code: 'EPERM' });
+    const err = outputWriteError(e, dest, 'best', 'Čćžšđ.mp4');
+    assert.equal(err.message, copy.failOutputLocked('Čćžšđ.txt'));
+    assert.ok(!/EPERM/.test(err.message), 'no raw errno in the user-facing message');
+    assert.match(err.details, /EPERM/, 'the raw text is still available for Copy Error Details');
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// Same errno, opposite cure. On Windows a directory whose write ACE is denied
+// still PASSES fs.accessSync(dir, W_OK) — measured — so the queue's pre-flight
+// waves it through and the refusal only lands here. "Close Word" would send this
+// user hunting for a program that isn't running.
+test('outputWriteError: EPERM with no destination file is a folder problem, not a lock', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'winpaths-denied-'));
+  try {
+    const dest = path.join(d, 'nope.txt');   // deliberately never created
+    const e = Object.assign(new Error(`EPERM: operation not permitted, rename 'x' -> '${dest}'`),
+      { code: 'EPERM' });
+    const err = outputWriteError(e, dest, 'best', 'clip.mp4');
+    assert.equal(err.message, copy.failOutputDirReadOnly('clip.mp4'));
+    assert.ok(!/EPERM/.test(err.message));
+    assert.match(err.details, /EPERM/);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('outputWriteError: other failures go through the normal classifier', () => {
+  const full = Object.assign(new Error('ENOSPC: no space left on device, rename …'), { code: 'ENOSPC' });
+  assert.equal(outputWriteError(full, '/d/a.txt', 'best', 'a.mp4').message, copy.failDisk);
+
+  const odd = Object.assign(new Error('EIO: i/o error, rename …'), { code: 'EIO' });
+  const err = outputWriteError(odd, '/d/a.txt', 'best', 'a.mp4');
+  assert.equal(err.message, copy.failTranscription);
+  assert.ok(!/EIO/.test(err.message), 'never leaks the raw errno');
 });

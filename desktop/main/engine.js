@@ -19,6 +19,7 @@ const path = require('path');
 const paths = require('./paths.js');
 const catalog = require('../shared/catalog.js');
 const logic = require('../shared/logic.js');
+const copy = require('../shared/copy.js');
 
 const IS_WIN = process.platform === 'win32';
 
@@ -318,6 +319,52 @@ function moveOutput(from, to) {
   }
 }
 
+// Windows-only reality: a file can be *momentarily* unmovable because Defender
+// (or the search indexer) has the just-written out.txt open for a scan. Those
+// clear in well under a second, so retry the lock codes a few times before
+// giving up. A destination the user really does have open in Word never clears:
+// it gives up after ~0.5 s and outputWriteError turns it into a sentence.
+const LOCK_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+
+async function moveOutputWithRetry(from, to, attempts = 4, delayMs = 150) {
+  for (let i = 1; ; i++) {
+    try {
+      moveOutput(from, to);
+      return;
+    } catch (e) {
+      if (i >= attempts || !e || !LOCK_CODES.has(e.code)) throw e;
+      await sleep(delayMs);
+    }
+  }
+}
+
+// The transcription itself succeeded; only putting the finished file in place
+// failed. Never let the raw fs message ("EPERM: operation not permitted, rename
+// 'C:\…\out.txt' -> …") reach the row's status line.
+//
+// EPERM/EACCES has TWO very different causes with opposite cures, and the queue's
+// pre-flight can't tell them apart (MEASURED on Windows: fs.accessSync(dir, W_OK)
+// PASSES on a directory whose write ACE is denied, and only the real write fails).
+// The destination file itself is the discriminator — the stale-clear just tried to
+// delete it, so:
+//   • it still exists  -> something holds it open. Cure: close that program.
+//   • it doesn't exist -> creating a file in that folder is what was refused.
+//     Cure: pick a different folder. Telling this user to "close Word" would send
+//     them looking for a program that isn't there.
+function outputWriteError(e, dest, modelSel, fileName) {
+  const raw = String((e && e.message) || e);
+  if (e && LOCK_CODES.has(e.code)) {
+    let destExists = false;
+    try { destExists = fs.existsSync(dest); } catch (_) { /* treat as absent */ }
+    const err = new Error(destExists
+      ? copy.failOutputLocked(path.basename(dest))
+      : copy.failOutputDirReadOnly(fileName));
+    err.details = raw;
+    return err;
+  }
+  return transcribeError(1, raw, modelSel, fileName, raw);
+}
+
 // ---------------------------------------------------------------- transcribe
 
 // Same aliases as bin/transcribe so terminal-style selectors keep working.
@@ -491,9 +538,16 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
     }
     // win32: move the ASCII workDir outputs to the real destination with
     // Node's Unicode-safe fs. darwin: renames is empty — whisper already wrote
-    // straight to txt/srt.
+    // straight to txt/srt. A destination the user still has open (the case the
+    // stale-clear above deliberately tolerated) surfaces here, as a sentence
+    // that says which file to close rather than a raw EPERM.
     for (const r of renames) {
-      if (fs.existsSync(r.from)) moveOutput(r.from, r.to);
+      if (!fs.existsSync(r.from)) continue;
+      try {
+        await moveOutputWithRetry(r.from, r.to);
+      } catch (e) {
+        throw outputWriteError(e, r.to, modelSel, fileName);
+      }
     }
     progress(100);
     return { txt, srt };
@@ -909,6 +963,8 @@ module.exports = {
     normalizeLang,
     whisperOutputPlan,
     moveOutput,
+    moveOutputWithRetry,
+    outputWriteError,
     isAsciiPath,
     findStagedFile,
   },

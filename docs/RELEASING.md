@@ -4,30 +4,24 @@ How versions, GitHub releases, and the in-app update banner work — and how to
 turn the whole machine on. This is the reference for the future maintainer
 (probably you, months from now).
 
-## Step 0 — REQUIRED before the repo is ever pushed: strip IMG_2827.mov
+## IMG_2827.mov — done, don't redo it
 
-**Do this before the first `git push`, and absolutely before making the repo
-public.** The personal test video `IMG_2827.mov` was removed from the index
-(it's no longer tracked), but it still sits inside the historical commits —
-anyone who clones the repo gets the private recording, forever. This is a
-privacy requirement, not housekeeping: it's trivial to fix now and impossible
-to fully undo once the repo has been published (clones, forks, and caches keep
-the file).
+The personal test video is **not in this repository's history**. It was stripped
+before the repo was pushed; it survives only as an untracked local fixture on the
+dev machine (`.gitignore` keeps it out, and the integration suite self-skips when
+it isn't there).
 
-```bash
-brew install git-filter-repo
-git filter-repo --path IMG_2827.mov --invert-paths --force
-```
-
-(`--force` is needed because this working copy isn't a fresh clone; the file
-itself stays on disk as a local test fixture. `git filter-repo` also drops any
-configured remotes — re-add `origin` afterwards if you had one.)
-
-Then prove the video is gone from every commit — this must print **nothing**:
+Re-check any time — this must print **nothing**:
 
 ```bash
 git log --all --oneline -- IMG_2827.mov
 ```
+
+If it ever prints something (a careless `git add -f`), fix it in the same commit
+rather than rewriting history: the repo is published, so a `git filter-repo` pass
+now would rewrite every already-pushed commit and force-push over it. Only reach
+for that if a private file genuinely made it into a pushed commit — and then say
+so loudly, because clones and forks keep the old objects.
 
 ## What happens on every push to main
 
@@ -71,44 +65,27 @@ Those release assets are what users download, and what existing apps compare
 themselves against. If either platform's build or smoke fails, nothing is
 released for anyone — a half-release (one platform only) can't happen.
 
-> **CI is the first Windows validation.** There is no local Windows machine
-> in this project's development loop — the mac side of the engine and app is
-> exercised locally (unit + integration + Playwright), but the Windows build,
-> `setup.ps1`'s tool downloads, and the Windows engine paths are proven **for
-> the first time by the build-win job**. Expect the first few pushes to main
-> to be shakedown runs: read build-win's logs closely, and treat a green
-> build-win as a meaningful signal, not a formality. When touching
-> engine/paths/setup code, remember Windows behavior is only verified there.
+> **What build-win proves, and what it doesn't.** The Windows port has since
+> been validated on real Windows 11 hardware — see `WINDOWS-TASKS.md` for the
+> record of what is proven end-to-end and the short list that still needs a
+> human at the machine. build-win is the ongoing regression net (it runs the
+> real `setup.ps1` tool download and the engine integration tests against those
+> binaries), not the only evidence. It still can't see the models, toasts, the
+> shell integration, or SmartScreen, so treat a green build-win as "nothing
+> obviously regressed", not "shipped and checked".
 
-## Activating releases (one-time)
+## Releases are live
 
-First complete **Step 0** above — these commands publish the repo's history.
+The repo is on GitHub (`flisko/transcribe`) and `main` is the release branch —
+every push to it runs the workflow above and publishes a new version. Nothing
+to configure: it uses the automatic `github.token`, no secrets.
 
-The workflow is dormant until the project is on GitHub. The local branch is
-currently `master`, but the workflow triggers on `main`, so push it *as*
-`main` (or rename first). Two equivalent paths:
-
-```bash
-# Option A — gh CLI (creates the repo and the remote in one go):
-gh repo create flisko/transcribe --private --source=. --remote=origin
-git push -u origin master:main
-
-# Option B — plain git (create the empty repo on github.com first):
-git remote add origin git@github.com:flisko/transcribe.git
-git push -u origin master:main
-```
-
-Or rename the branch once and forget about it: `git branch -m master main`
-then `git push -u origin main`.
-
-The first push to `main` triggers the first release. Nothing else to
-configure — the workflow uses the automatic `github.token`, no secrets needed.
-
-> **Private vs public:** a private repo is fine for *building* releases, but
-> the app's update check calls the GitHub API anonymously — against a private
-> repo it gets a 404 and stays silent, and users couldn't download the zip
-> anyway. When you want other people's machines to see update banners, make
-> the repo public (github.com → repo Settings → Danger Zone → Change
+> **Private vs public:** the repo is currently **private**, which is fine for
+> *building* releases, but the app's update check calls the GitHub API
+> anonymously — against a private repo it gets a 404 and stays silent, and
+> users couldn't download the zip anyway. So today no shipped app will ever
+> show an update banner. When you want other people's machines to see them,
+> make the repo public (github.com → repo Settings → Danger Zone → Change
 > visibility, or `gh repo edit flisko/transcribe --visibility public`).
 
 ## How users get the update warning

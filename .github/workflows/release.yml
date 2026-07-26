@@ -1,12 +1,12 @@
 # Builds and publishes a macOS + Windows release on every push to main.
-# Dormant until this project is pushed to a GitHub repo — see docs/RELEASING.md
-# for how to activate it, how versioning works, and how the in-app update
+# See docs/RELEASING.md for how versioning works and how the in-app update
 # banner connects to these releases.
 #
-# NOTE: this is also the project's first REAL Windows validation — no local
-# Windows machine exists. The build-win job therefore runs a genuine smoke
-# (setup.ps1 tool download + yt-dlp engine tests) before packaging, so a
-# broken Windows build fails the release instead of shipping.
+# The build-win job runs a genuine smoke (the real setup.ps1 tool download, then
+# the engine integration tests against those binaries) before packaging, so a
+# broken Windows build fails the release instead of shipping. It is the ongoing
+# regression net for the Windows port; WINDOWS-TASKS.md records what was proven
+# on real hardware and what CI still can't see (models, toasts, SmartScreen).
 name: release
 
 on:

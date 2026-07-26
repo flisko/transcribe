@@ -15,6 +15,9 @@ function createSettings({ file, downloadsDir } = {}) {
     keepVideo: false,
     downloadFolder: downloadsDir || path.join(os.homedir(), 'Downloads'),
     notifyOnFinish: true,
+    // The launch-time update CHECK (the banner). Nothing is ever installed
+    // automatically — see Copy.settingsAutoCheckCaption.
+    autoCheckUpdates: true,
   };
 
   let data = { ...defaults };

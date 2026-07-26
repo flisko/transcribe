@@ -80,14 +80,16 @@
     <div class="setup" id="setup" hidden>
       <svg class="glyph" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a1.8 1.8 0 0 0-.9-1.56l-7.2-4.1a1.8 1.8 0 0 0-1.8 0l-7.2 4.1A1.8 1.8 0 0 0 3 8v8a1.8 1.8 0 0 0 .9 1.56l7.2 4.1a1.8 1.8 0 0 0 1.8 0l7.2-4.1A1.8 1.8 0 0 0 21 16z"/><path d="M3.3 7.1 12 12l8.7-4.9M12 22V12"/><path d="M7.6 4.6l8.9 5.1"/></svg>
       <h2>One-time setup</h2>
-      <p class="intro">Transcribe needs a few free components before it can start. Everything runs on your Mac — nothing is uploaded.</p>
+      <!-- These three sentences name platform-specific things; main sends the
+           right wording in snapshot.chrome and view.js swaps them in. -->
+      <p class="intro" id="setupIntro">Transcribe needs a few free components before it can start. Everything runs on your Mac — nothing is uploaded.</p>
       <div class="checklist" id="checklist"></div>
       <p class="engine-missing" id="engineMissing" hidden>Transcribe can&#8217;t find its engine. Keep Transcribe.app inside the Transcribe folder, next to &#8220;bin&#8221; and &#8220;models&#8221;, then click Check Again.</p>
       <div class="btns">
         <button class="btn prominent" id="runSetupBtn">Run Setup&#8230;</button>
         <button class="btn" id="checkAgainBtn">Check Again</button>
       </div>
-      <p class="foot">Setup opens the Terminal and takes a few minutes, mostly downloading. It&#8217;s safe to run more than once.</p>
+      <p class="foot" id="setupFootnote">Setup opens the Terminal and takes a few minutes, mostly downloading. It&#8217;s safe to run more than once.</p>
     </div>
   </div>
 

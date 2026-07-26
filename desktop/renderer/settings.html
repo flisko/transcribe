@@ -61,6 +61,28 @@
       </div>
     </div>
 
+    <div class="section">
+      <h2>Updates</h2>
+      <div class="group">
+        <div class="frow">
+          <div class="line">
+            <!-- Version string and status sentence are composed by main. -->
+            <span class="lbl" id="versionLabel"></span>
+            <button class="btn" id="downloadUpdateBtn" hidden>Download</button>
+            <button class="btn" id="checkUpdatesBtn">Check Now</button>
+          </div>
+          <div class="cap" id="updateStatus" hidden></div>
+        </div>
+        <div class="frow">
+          <div class="line">
+            <span class="lbl">Check for updates automatically</span>
+            <button class="switch" id="autoUpdateSwitch" role="switch"></button>
+          </div>
+          <div class="cap">Looks once each time Transcribe starts, and shows a banner when a new version exists. Nothing is downloaded or installed for you — you choose when to update.</div>
+        </div>
+      </div>
+    </div>
+
   </div>
   <script src="popover.js"></script>
   <script src="settings.js"></script>
