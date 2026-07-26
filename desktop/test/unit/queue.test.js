@@ -67,9 +67,7 @@ const stubCopy = {
   notifFailedTitle: 'Transcription failed',
   notifFailedBody: (name) => `"${name}" couldn't be transcribed. Open Transcribe for details.`,
   // Platform-varying setup chrome the snapshot forwards to the renderer.
-  setupIntro: 'Transcribe needs a few free components before it can start.',
-  engineMissing: "Transcribe can't find its engine.",
-  setupFootnote: 'Setup opens a console and takes a few minutes.',
+
   // Settings ▸ Updates.
   settingsVersion: (v) => `Version ${v}`,
   updateAvailable: (v) => `Version ${v} is available.`,
@@ -609,12 +607,8 @@ test('snapshot shape: C4 fields, banner lifecycle, clear done, selection hint', 
   const h = harness(t);
   let snap = h.queue.snapshot();
   assert.deepStrictEqual(Object.keys(snap).sort(),
-    ['banner', 'catalog', 'chrome', 'deps', 'footer', 'items', 'languages', 'phase',
+    ['banner', 'catalog', 'deps', 'footer', 'items', 'languages', 'phase',
      'selectionHint', 'settings', 'update'].sort());
-  // Platform-varying static chrome is composed here (C4), not in the renderer.
-  assert.deepStrictEqual(Object.keys(snap.chrome).sort(),
-    ['engineMissing', 'setupFootnote', 'setupIntro']);
-  for (const s of Object.values(snap.chrome)) assert.strictEqual(typeof s, 'string');
   assert.deepStrictEqual(snap.deps, {
     whisperOK: true, ffmpegOK: true, ytDlpOK: true, modelsOK: true, bestModelOK: true,
     linksLimited: false, setupNeeded: false, folderOK: true,
@@ -630,8 +624,11 @@ test('snapshot shape: C4 fields, banner lifecycle, clear done, selection hint', 
 
   h.queue.setBanner({ version: '9.9', url: 'https://example.com/rel' });
   snap = h.queue.snapshot();
-  assert.deepStrictEqual(snap.banner, { version: '9.9', url: 'https://example.com/rel' });
-  assert.deepStrictEqual(h.queue.getBanner(), { version: '9.9', url: 'https://example.com/rel' });
+  // banner.text is composed by main (C4) so the notice follows the UI language.
+  assert.deepStrictEqual(snap.banner,
+    { version: '9.9', url: 'https://example.com/rel', text: 'Version 9.9 is available.' });
+  assert.deepStrictEqual(h.queue.getBanner(),
+    { version: '9.9', url: 'https://example.com/rel', text: 'Version 9.9 is available.' });
   h.queue.dismissBanner();
   assert.strictEqual(h.queue.snapshot().banner, null);
 

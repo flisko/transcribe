@@ -5,6 +5,11 @@
 (function () {
   'use strict';
 
+  // The search placeholder is the popover's only piece of text; the renderers
+  // hand it over once the localized string table arrives.
+  let SEARCH_PLACEHOLDER = 'Search languages';
+  function setSearchPlaceholder(text) { if (text) SEARCH_PLACEHOLDER = text; }
+
   const CHECK_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>';
 
   // Search matches the English name (contains) or the code (prefix).
@@ -42,12 +47,13 @@
     const height = Math.min(360, window.innerHeight - 16);
     pop.style.height = height + 'px';
     pop.innerHTML =
-      '<div class="search-wrap"><input class="field" type="text" placeholder="Search languages" spellcheck="false"></div>' +
+      '<div class="search-wrap"><input class="field" type="text" spellcheck="false"></div>' +
       '<div class="list"></div>';
     layer.appendChild(pop);
     place(pop, opts.anchor, 260, height);
 
     const input = pop.querySelector('input');
+    input.placeholder = SEARCH_PLACEHOLDER;
     const list = pop.querySelector('.list');
     let results = [];
     let highlighted = 0;
@@ -160,5 +166,5 @@
     return close;
   }
 
-  window.TranscribePopover = { openLanguagePopover, openMenu };
+  window.TranscribePopover = { openLanguagePopover, openMenu, setSearchPlaceholder };
 })();

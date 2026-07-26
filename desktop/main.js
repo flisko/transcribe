@@ -138,7 +138,7 @@ function createMainWindow() {
   });
   hardenWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  mainWindow.webContents.on('did-finish-load', sendState);
+  mainWindow.webContents.on('did-finish-load', () => { sendStrings(mainWindow); sendState(); });
   mainWindow.on('close', (event) => {
     // mac: closing the window leaves the app (and its work) running — the
     // quit guard lives on before-quit. Elsewhere close means quit.
@@ -179,8 +179,22 @@ function openSettingsWindow() {
   });
   hardenWindow(settingsWindow);
   settingsWindow.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
-  settingsWindow.webContents.on('did-finish-load', sendState);
+  settingsWindow.webContents.on('did-finish-load', () => { sendStrings(settingsWindow); sendState(); });
   settingsWindow.on('closed', () => { settingsWindow = null; });
+}
+
+// Every plain-string entry of the copy table, in the UI language. The renderer
+// cannot require shared/copy.js (contextIsolation), which is why its static text
+// used to be a second, English-only copy hardcoded in the HTML. Functions are
+// dropped: anything needing an argument is composed by main and arrives in the
+// state snapshot instead.
+function sendStrings(win) {
+  if (!win || win.isDestroyed()) return;
+  const strings = {};
+  for (const [key, value] of Object.entries(copy)) {
+    if (typeof value === 'string') strings[key] = value;
+  }
+  win.webContents.send('strings', strings);
 }
 
 function sendState() {

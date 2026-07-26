@@ -1236,15 +1236,6 @@ function createQueue(opts) {
       languages: (languages.displayOrder || languages.all).map((l) => ({ code: l.code, name: l.name })),
       selectionHint: { clearDoneVisible: hasFinishedRows() && !selectionIsInProgress() },
       update: updateView(),
-      // Static chrome whose wording differs per platform (C4: main composes every
-      // user-visible string). index.html ships the macOS sentences as its
-      // pre-paint default; the renderer overwrites these from the first snapshot
-      // so a Windows user isn't told the app "runs on your Mac".
-      chrome: {
-        setupIntro: copy.setupIntro,
-        engineMissing: copy.engineMissing,
-        setupFootnote: copy.setupFootnote,
-      },
     };
   }
 
@@ -1268,7 +1259,11 @@ function createQueue(opts) {
     copyErrorDetails,
     select(id) { selection = id == null ? null : id; changed(); },
     setBanner(info) {
-      banner = info ? { version: info.version, url: info.url || null } : null;
+      // Sentence composed here (C4), so the banner speaks the UI language like
+      // everything else — the renderer used to build it from an English literal.
+      banner = info
+        ? { version: info.version, url: info.url || null, text: copy.updateAvailable(info.version) }
+        : null;
       changed();
     },
     dismissBanner() { banner = null; changed(); },

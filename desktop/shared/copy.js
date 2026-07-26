@@ -23,7 +23,11 @@ const FILE_MANAGER = IS_MAC ? 'Finder' : 'File Explorer';
 const APP_FILE = IS_MAC ? 'Transcribe.app' : 'Transcribe.exe';
 const SETUP_CONSOLE = IS_MAC ? 'the Terminal' : 'a PowerShell window';
 
-const Copy = {
+// The English table, and the fallback for every other locale: a translation file
+// supplies only the keys it has translated, so a missing string degrades to
+// English rather than to `undefined` in the UI.
+function english(ctx) {
+  return {
   SETUP_NAME,
 
   // Window / input header
@@ -245,6 +249,84 @@ const Copy = {
     const r = m % 60;
     return r === 0 ? `${h} hr` : `${h} hr ${r} min`;
   },
-};
+
+  // MARK: - ETA phrasing (rendered by logic.js EtaSmoother.label)
+  // Abbreviated units deliberately: "min"/"h" inflect in no Slavic language,
+  // which keeps the running estimate out of the plural system entirely.
+  etaUnderMinute: 'less than a minute left',
+  etaMinutes(m) { return `about ${m} min left`; },
+  etaHours(h) { return `about ${h} hr left`; },
+  etaHoursMinutes(h, r) { return `about ${h} hr ${r} min left`; },
+  };
+}
+
+// MARK: - Locale selection
+//
+// The audience is Croatian and Slovenian; the app was English-only. Rivals ship
+// many locales (Buzz 14, Vibe 19) and NEITHER ships hr or sl, so this is the one
+// place where being small is an advantage. What matters is not the buttons: the
+// whole recovery strategy is instructional prose ("double-click Transcribe Setup,
+// let it update the downloader, then press Retry"), which a stuck user meets at
+// the exact moment they cannot afford to be reading a foreign language.
+
+const TRANSLATIONS = { hr: './i18n/hr', sl: './i18n/sl' };
+
+// Language subtag of the UI locale. Intl reflects the OS locale in both Node and
+// Electron's main process, so this resolves at require time with no dependency on
+// app.getLocale() (which is only reliable after 'ready' — too late, half the
+// modules here are required before that). TRANSCRIBE_LOCALE overrides, for tests
+// and for anyone who wants English on a Croatian machine.
+function resolveLocale(tag) {
+  let raw = tag;
+  if (!raw) raw = process.env.TRANSCRIBE_LOCALE;
+  if (!raw) {
+    try { raw = Intl.DateTimeFormat().resolvedOptions().locale; } catch (_) { raw = 'en'; }
+  }
+  const lang = String(raw || 'en').toLowerCase().split(/[-_]/)[0];
+  return Object.prototype.hasOwnProperty.call(TRANSLATIONS, lang) ? lang : 'en';
+}
+
+// Croatian has one/few/other; Slovenian adds a dual (one/two/few/other). Getting
+// this wrong is the tell of a machine translation, and Intl already knows the
+// rules — the translator only has to supply the forms.
+function pluralFor(locale) {
+  let rules = null;
+  try { rules = new Intl.PluralRules(locale); } catch (_) { rules = null; }
+  return (n, forms) => {
+    const category = rules ? rules.select(n) : (n === 1 ? 'one' : 'other');
+    return forms[category] !== undefined ? forms[category] : forms.other;
+  };
+}
+
+// One stable object identity for the whole process: modules capture `copy` at
+// require time (engine.js, logic.js, catalog.js, menus.js, queue.js's default),
+// so switching locale rewrites this table in place rather than replacing it.
+const Copy = {};
+
+function setLocale(tag) {
+  const locale = resolveLocale(tag);
+  const ctx = {
+    locale,
+    isMac: IS_MAC,
+    setupName: SETUP_NAME,   // a filename — never translated
+    appFile: APP_FILE,
+    plural: pluralFor(locale),
+  };
+  const table = english(ctx);
+  if (locale !== 'en') {
+    // Overlay only: an untranslated key keeps its English text.
+    try { Object.assign(table, require(TRANSLATIONS[locale])(ctx)); } catch (_) { /* ship English */ }
+  }
+  for (const key of Object.keys(Copy)) delete Copy[key];
+  Object.assign(Copy, table, { locale });
+  return Copy;
+}
+
+// Non-enumerable so it never shows up as a "string" to anything that walks the
+// table (the copy tests call every enumerable function with placeholder args).
+Object.defineProperty(Copy, 'setLocale', { value: setLocale, enumerable: false });
+Object.defineProperty(Copy, 'availableLocales', { value: ['en', ...Object.keys(TRANSLATIONS)], enumerable: false });
+
+setLocale();
 
 module.exports = Copy;

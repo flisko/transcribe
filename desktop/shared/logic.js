@@ -77,14 +77,17 @@ class EtaSmoother {
     return EtaSmoother.bucketsMinutes.length - 1;
   }
 
+  // Phrasing lives in Copy so it follows the UI language — this is the string a
+  // user stares at for the whole run, so it is the last place an English
+  // sentence should survive on a Croatian machine.
   static label(bucketIndex) {
     const b = EtaSmoother.bucketsMinutes;
     const m = b[Math.max(0, Math.min(bucketIndex, b.length - 1))];
-    if (m === 0) return 'less than a minute left';
-    if (m <= 90) return `about ${m} min left`;
+    if (m === 0) return Copy.etaUnderMinute;
+    if (m <= 90) return Copy.etaMinutes(m);
     const h = Math.floor(m / 60);
     const r = m % 60;
-    return r === 0 ? `about ${h} hr left` : `about ${h} hr ${r} min left`;
+    return r === 0 ? Copy.etaHours(h) : Copy.etaHoursMinutes(h, r);
   }
 }
 

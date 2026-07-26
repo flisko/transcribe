@@ -7,9 +7,27 @@
   const api = window.api;
   const $ = (id) => document.getElementById(id);
 
-  // C7: only the setup-tool name is platform-aware; the sentence is otherwise verbatim.
-  const SETUP_NAME = navigator.platform.indexOf('Mac') !== -1 ? 'setup.command' : 'Transcribe Setup';
-  const MODEL_MISSING_TIP = "This model isn't downloaded — run " + SETUP_NAME + '.';
+  // Static UI text in the user's language, pushed once per load by main (which is
+  // the only side that knows both the platform and the locale). The HTML ships
+  // English so there is never a blank frame.
+  let S = {};
+  const T = (key, fallback) => (S[key] !== undefined ? S[key] : (fallback || ''));
+  let MODEL_MISSING_TIP = "This model isn't downloaded — run Transcribe Setup.";
+
+  api.onStrings((strings) => {
+    S = strings || {};
+    for (const el of document.querySelectorAll('[data-i18n]')) {
+      const v = S[el.dataset.i18n];
+      if (v !== undefined) el.textContent = v;
+    }
+    for (const el of document.querySelectorAll('[data-i18n-title]')) {
+      const v = S[el.dataset.i18nTitle];
+      if (v !== undefined) el.title = v;
+    }
+    if (S.settingsModelMissingTooltip) MODEL_MISSING_TIP = S.settingsModelMissingTooltip;
+    if (S.searchLanguages) window.TranscribePopover.setSearchPlaceholder(S.searchLanguages);
+    if (snapshot) render();
+  });
 
   const WARN_SVG = '<svg width="13" height="13" viewBox="0 0 24 24"><path d="M10.28 3.9 2.33 17.66a2 2 0 0 0 1.73 3.04h15.88a2 2 0 0 0 1.73-3.04L13.72 3.9a2 2 0 0 0-3.44 0Z" fill="var(--color-warning)"/><path d="M12 9v5" stroke="var(--color-on-warning)" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17.1" r="1.15" fill="var(--color-on-warning)"/></svg>';
 
@@ -26,7 +44,7 @@
 
     const lang = s.languages.find((l) => l.code === s.settings.language);
     $('langName').textContent = lang ? lang.name
-      : (s.settings.language === 'auto' ? 'Auto-detect' : s.settings.language);
+      : (s.settings.language === 'auto' ? T('autoDetect', 'Auto-detect') : s.settings.language);
 
     setSwitch($('keepVideoSwitch'), !!s.settings.keepVideo);
     setSwitch($('notifySwitch'), !!s.settings.notifyOnFinish);

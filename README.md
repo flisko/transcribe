@@ -127,7 +127,17 @@ That includes audio (`.mp3`, `.m4a`, `.aac`, `.wav`, `.flac`, `.ogg`, `.opus`,
 `.wmv`, `.flv`, `.mpg`, `.3gp`). A file with no audio track fails with a
 friendly note; the rest of the queue carries on.
 
-### Languages
+### The app's own language
+
+Transcribe speaks **English, Croatian and Slovenian**, and picks the one your
+system is set to — nothing to configure. Language names in the picker come from
+the system too, so on a Croatian machine you choose *njemački*, not *German*.
+
+Want English on a Croatian computer (or the other way round)? Set
+`TRANSCRIBE_LOCALE` to `en`, `hr` or `sl` before launching. The setup scripts are
+still English-only.
+
+### Transcription languages
 
 Whisper is multilingual (~99 languages), so this isn't limited to Croatian and
 Slovenian. Pick any language from the searchable list (Croatian and Slovenian

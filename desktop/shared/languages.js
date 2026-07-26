@@ -109,30 +109,63 @@ const all = [
   { code: 'yue', name: 'Cantonese' },
 ];
 
+// Translating 99 language names by hand would be the bulk of a localization and
+// the easiest place to get one subtly wrong. ICU already knows them all, in every
+// locale ("de" -> njemački / nemščina), so the translator never touches this list.
+// Only applied off English: under `en` the hand-written names above stay exactly
+// as they are, so nothing about the existing UI shifts.
+const localized = (() => {
+  const locale = Copy.locale || 'en';
+  if (locale === 'en') return all;
+  let names = null;
+  try { names = new Intl.DisplayNames([locale], { type: 'language' }); } catch (_) { return all; }
+  return all.map((l) => {
+    let name = l.name;
+    try {
+      const n = names.of(l.code);
+      // ICU returns the code itself when it has no name, and lower-cases in most
+      // Slavic locales — a menu entry wants a capital.
+      if (n && n !== l.code) name = n.charAt(0).toLocaleUpperCase(locale) + n.slice(1);
+    } catch (_) { /* keep the English name */ }
+    return { code: l.code, name, englishName: l.name };
+  });
+})();
+
 // Display order: Auto-detect, then pinned Croatian + Slovenian, then the rest
-// A–Z by English name.
+// A–Z. Sorted with the UI locale's collation, so č/ć/š/ž land where a Croatian
+// or Slovenian reader expects them rather than after z.
 const displayOrder = (() => {
   const pinnedCodes = ['hr', 'sl'];
-  const pinned = pinnedCodes.map((c) => all.find((l) => l.code === c)).filter(Boolean);
-  const rest = all
+  const pinned = pinnedCodes.map((c) => localized.find((l) => l.code === c)).filter(Boolean);
+  const locale = Copy.locale || 'en';
+  let collator = null;
+  if (locale !== 'en') {
+    try { collator = new Intl.Collator(locale); } catch (_) { collator = null; }
+  }
+  const rest = localized
     .filter((l) => !pinnedCodes.includes(l.code))
     .slice()
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    .sort(collator
+      ? (a, b) => collator.compare(a.name, b.name)
+      : (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   return [auto, ...pinned, ...rest];
 })();
 
-// Search matches the English name (contains) or the code (prefix).
+// Search matches the displayed name, the ENGLISH name (so someone who knows the
+// English word still finds it in a Croatian UI), or the code as a prefix.
 function filtered(query) {
   const q = String(query ?? '').trim().toLowerCase();
   if (!q) return displayOrder;
   return displayOrder.filter(
-    (l) => l.name.toLowerCase().includes(q) || l.code.toLowerCase().startsWith(q),
+    (l) => l.name.toLowerCase().includes(q)
+      || (l.englishName && l.englishName.toLowerCase().includes(q))
+      || l.code.toLowerCase().startsWith(q),
   );
 }
 
 function nameFor(code) {
   if (code === auto.code) return auto.name;
-  const l = all.find((x) => x.code === code);
+  const l = localized.find((x) => x.code === code);
   return l ? l.name : code;
 }
 

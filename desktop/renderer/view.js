@@ -8,6 +8,40 @@
   const api = window.api;
   const $ = (id) => document.getElementById(id);
 
+  // Static UI text in the user's language, pushed once per load by main. The HTML
+  // ships English so there is never a blank frame; this replaces it as soon as it
+  // arrives. Empty until then, so every read goes through T().
+  let S = {};
+  const T = (key, fallback) => (S[key] !== undefined ? S[key] : (fallback || ''));
+
+  function applyStrings(strings) {
+    S = strings || {};
+    for (const el of document.querySelectorAll('[data-i18n]')) {
+      const v = S[el.dataset.i18n];
+      if (v !== undefined) el.textContent = v;
+    }
+    for (const el of document.querySelectorAll('[data-i18n-title]')) {
+      const v = S[el.dataset.i18nTitle];
+      if (v !== undefined) el.title = v;
+    }
+    for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
+      const v = S[el.dataset.i18nPlaceholder];
+      if (v !== undefined) el.placeholder = v;
+    }
+    // The empty-state subtitle is the one string with a deliberate line break.
+    if (S.emptySubtitle) {
+      const p = $('emptySubtitle');
+      p.textContent = '';
+      S.emptySubtitle.split('\n').forEach((line, i) => {
+        if (i) p.appendChild(document.createElement('br'));
+        p.appendChild(document.createTextNode(line));
+      });
+    }
+    if (S.searchLanguages) window.TranscribePopover.setSearchPlaceholder(S.searchLanguages);
+    if (snapshot) render();   // repaint anything already on screen
+  }
+  api.onStrings(applyStrings);
+
   if (navigator.platform.indexOf('Mac') !== -1) document.body.classList.add('mac');
 
   // ---------- icons ----------
@@ -45,7 +79,6 @@
     const s = snapshot;
     const phase = s.phase;
 
-    applyChrome(s.chrome);
     renderToolbar(s);
     renderBanner(s.banner);
 
@@ -54,7 +87,7 @@
     $('linkArea').hidden = limited;
     $('linksLimited').hidden = !limited;
     if (!limited) installClicked = false;
-    $('installBtn').textContent = installClicked ? 'Check Again' : 'Install…';
+    $('installBtn').textContent = installClicked ? T('checkAgain', 'Check Again') : T('linksLimitedInstall', 'Install…');
 
     renderQuickSettings(s);
 
@@ -67,8 +100,8 @@
     $('cancelAllBtn').hidden = !s.footer.showCancelAll;
 
     $('dropOverlayText').textContent = phase === 'setup'
-      ? 'Finish setup to start transcribing'
-      : 'Drop to add to the queue';
+      ? T('dropOverlaySetup', 'Finish setup to start transcribing')
+      : T('dropOverlay', 'Drop to add to the queue');
   }
 
   function renderToolbar(s) {
@@ -79,28 +112,15 @@
 
   function renderBanner(banner) {
     $('banner').hidden = !banner;
-    if (banner) $('bannerMsg').textContent = 'Version ' + banner.version + ' is available.';
+    if (banner) $('bannerMsg').textContent = banner.text || ('Version ' + banner.version + ' is available.');
   }
 
   function renderQuickSettings(s) {
     const lang = s.languages.find((l) => l.code === s.settings.language);
     $('langName').textContent = lang ? lang.name
-      : (s.settings.language === 'auto' ? 'Auto-detect' : s.settings.language);
+      : (s.settings.language === 'auto' ? T('autoDetect', 'Auto-detect') : s.settings.language);
     const model = s.catalog.find((m) => m.sel === s.settings.model);
     $('modelName').textContent = model ? model.display : s.settings.model;
-  }
-
-  // The setup screen's three sentences name platform-specific things ("your
-  // Mac"/"your PC", Transcribe.app/.exe, the Terminal/a PowerShell window), so
-  // main composes them (snapshot.chrome) and the HTML only carries a default.
-  // They never change during a run — apply once, on the first snapshot.
-  let chromeApplied = false;
-  function applyChrome(chrome) {
-    if (chromeApplied || !chrome) return;
-    chromeApplied = true;
-    if (chrome.setupIntro) $('setupIntro').textContent = chrome.setupIntro;
-    if (chrome.engineMissing) $('engineMissing').textContent = chrome.engineMissing;
-    if (chrome.setupFootnote) $('setupFootnote').textContent = chrome.setupFootnote;
   }
 
   function renderSetup(deps) {
@@ -109,10 +129,10 @@
     $('engineMissing').hidden = engineOK;
     if (!engineOK) return;
     const rows = [
-      ['Speech recognition (whisper)', deps.whisperOK],
-      ['Audio converter (ffmpeg)', deps.ffmpegOK],
-      ['Language models (4.6 GB download)', deps.modelsOK],
-      ['Link downloader (yt-dlp) — optional, only needed for video links', deps.ytDlpOK]
+      [T('setupWhisper', 'Speech recognition (whisper)'), deps.whisperOK],
+      [T('setupFfmpeg', 'Audio converter (ffmpeg)'), deps.ffmpegOK],
+      [T('setupModels', 'Language models (4.6 GB download)'), deps.modelsOK],
+      [T('setupYtDlp', 'Link downloader (yt-dlp) — optional, only needed for video links'), deps.ytDlpOK]
     ];
     const list = $('checklist');
     list.textContent = '';
@@ -122,7 +142,7 @@
       row.innerHTML = (ok ? ICONS.checkOn : ICONS.checkOff) +
         '<span class="name"></span><span class="st' + (ok ? ' ok' : '') + '"></span>';
       row.querySelector('.name').textContent = name;
-      row.querySelector('.st').textContent = ok ? 'Installed' : 'Not installed';
+      row.querySelector('.st').textContent = ok ? T('installed', 'Installed') : T('notInstalled', 'Not installed');
       list.appendChild(row);
     }
   }
@@ -305,31 +325,31 @@
 
     switch (item.state) {
       case 'waiting':
-        add(iconBtn(ICONS.x, 'Remove', 'remove', true));
+        add(iconBtn(ICONS.x, T('removeTooltip', 'Remove'), 'remove', true));
         break;
       case 'lookingUp': {
         const sp = document.createElement('span');
         sp.className = 'spinner';
         add(sp);
-        add(iconBtn(ICONS.x, 'Cancel', 'cancel', true));
+        add(iconBtn(ICONS.x, T('cancelTooltip', 'Cancel'), 'cancel', true));
         break;
       }
       case 'downloading':
       case 'preparing':
       case 'transcribing':
-        add(iconBtn(ICONS.x, 'Cancel', 'cancel', false));
+        add(iconBtn(ICONS.x, T('cancelTooltip', 'Cancel'), 'cancel', false));
         break;
       case 'done':
-        if (item.canOpen !== false) add(smallBtn('Open', 'openTranscript'));
+        if (item.canOpen !== false) add(smallBtn(T('open', 'Open'), 'openTranscript'));
         add(ellipsisBtn());
         break;
       case 'failed':
-        if (item.canRetry !== false) add(smallBtn('Retry', 'retry'));
+        if (item.canRetry !== false) add(smallBtn(T('retry', 'Retry'), 'retry'));
         add(ellipsisBtn());
         break;
       case 'canceled':
-        add(smallBtn('Start Again', 'startAgain'));
-        add(iconBtn(ICONS.x, 'Remove', 'remove', true));
+        add(smallBtn(T('startAgain', 'Start Again'), 'startAgain'));
+        add(iconBtn(ICONS.x, T('removeTooltip', 'Remove'), 'remove', true));
         break;
     }
   }
@@ -349,7 +369,7 @@
       invoke('recheckDeps');
     } else {
       installClicked = true;
-      $('installBtn').textContent = 'Check Again';
+      $('installBtn').textContent = T('checkAgain', 'Check Again');
       invoke('runSetup');
     }
   });
