@@ -45,7 +45,17 @@ $VadModel = 'ggml-silero-v5.1.2.bin'
 $VadUrl   = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/$VadModel"
 
 $WhisperUrl = 'https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip'
-$FfmpegUrl  = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+
+# ffmpeg comes from BtbN's GitHub builds, NOT gyan.dev. MEASURED on a 1 Gbit
+# line: gyan.dev served 48 KB/s (a ~35-minute wait that looks like a hung setup),
+# GitHub's CDN 7000+ KB/s for the same job — the single-maintainer host is the
+# bottleneck, not anyone's connection. Every other download here was already on
+# GitHub or HuggingFace and was never slow.
+# LGPL, not GPL: the app only DECODES audio and yt-dlp only remuxes, so the GPL
+# build's extra video encoders buy nothing, and this zip is 20 MB smaller.
+# Verified this exact binary through the real pipeline (mov -> 16 kHz mono wav,
+# and the m4a yt-dlp produces) before switching.
+$FfmpegUrl  = 'https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-lgpl.zip'
 $YtDlpUrl   = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
 $DenoUrl    = 'https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip'
 
@@ -538,15 +548,14 @@ try {
 } catch { }
 
 # 8. Tidy the download staging folder. Every successful install deletes its own
-#    file out of it, so an EMPTY .dl means the run is done with it. It is only
-#    removed when empty: leftovers are half-downloaded tool zips that curl -C -
-#    resumes on the next run, and deleting those would restart the download.
+#    file out of it, so when every tool is in place nothing left in .dl can ever
+#    be resumed — including partials for a URL this script no longer uses (the
+#    ffmpeg host changed, and a stale half-download under the old file name would
+#    otherwise sit there forever). If an install DID fail, leave it all alone:
+#    those bytes are what curl -C - resumes on the next run.
 try {
-  if (Test-Path -LiteralPath $StageDir) {
-    $leftover = @(Get-ChildItem -LiteralPath $StageDir -Force -ErrorAction SilentlyContinue)
-    if ($leftover.Count -eq 0) {
-      Remove-Item -LiteralPath $StageDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
+  if ((Test-Path -LiteralPath $StageDir) -and (-not $installFailed)) {
+    Remove-Item -LiteralPath $StageDir -Recurse -Force -ErrorAction SilentlyContinue
   }
 } catch { }
 
