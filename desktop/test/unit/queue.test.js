@@ -728,6 +728,48 @@ test('update panel: no app version injected → no version label, no crash', asy
   assert.strictEqual(u.currentVersion, null);
 });
 
+// Dropping a folder used to produce ONE row that failed with "the file can't be
+// found any more" — a message that is also untrue. It is the first gesture
+// someone with a folder of lectures tries.
+test('dropping a folder enqueues the media inside it, in name order', async (t) => {
+  const h = harness(t);
+  const folder = path.join(h.dir, 'Predavanja');
+  fs.mkdirSync(folder);
+  for (const n of ['c.mp4', 'a.mov', 'b.mp3', 'notes.txt', 'cover.jpg', '.hidden.mp4']) {
+    fs.writeFileSync(path.join(folder, n), 'media-bytes');
+  }
+  fs.mkdirSync(path.join(folder, 'nested'));
+  fs.writeFileSync(path.join(folder, 'nested', 'deep.mp4'), 'media-bytes');
+
+  h.queue.addFiles([folder]);
+  const titles = h.queue.snapshot().items.map((i) => i.title);
+
+  assert.deepStrictEqual(titles, ['.hidden.mp4', 'a.mov', 'b.mp3', 'c.mp4'],
+    'media only, sorted; no row for the folder itself');
+  assert.ok(!titles.includes('notes.txt'), 'non-media ignored');
+  assert.ok(!titles.includes('cover.jpg'), 'images ignored');
+  assert.ok(!titles.includes('deep.mp4'), 'one level only — a nested folder is not walked');
+});
+
+test('a folder with no media adds nothing at all (no misleading failed row)', async (t) => {
+  const h = harness(t);
+  const folder = path.join(h.dir, 'Documents');
+  fs.mkdirSync(folder);
+  fs.writeFileSync(path.join(folder, 'readme.txt'), 'x');
+  h.queue.addFiles([folder]);
+  assert.deepStrictEqual(h.queue.snapshot().items, []);
+});
+
+test('files and folders can be dropped together', async (t) => {
+  const h = harness(t);
+  const loose = h.mkFile('loose.mp4');
+  const folder = path.join(h.dir, 'batch');
+  fs.mkdirSync(folder);
+  fs.writeFileSync(path.join(folder, 'inside.mov'), 'media-bytes');
+  h.queue.addFiles([loose, folder]);
+  assert.deepStrictEqual(h.queue.snapshot().items.map((i) => i.title), ['loose.mp4', 'inside.mov']);
+});
+
 test('cancel of a single active item; startAgain reruns it', async (t) => {
   const h = harness(t);
   const f = h.mkFile('again.mp4');

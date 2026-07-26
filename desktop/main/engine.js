@@ -20,8 +20,49 @@ const paths = require('./paths.js');
 const catalog = require('../shared/catalog.js');
 const logic = require('../shared/logic.js');
 const copy = require('../shared/copy.js');
+const srtFormat = require('../shared/srt.js');
 
 const IS_WIN = process.platform === 'win32';
+
+// Silero VAD, fetched into models/ by setup (885 kB). Named here because both
+// the engine and the setup scripts have to agree on it.
+const VAD_MODEL_FILE = 'ggml-silero-v5.1.2.bin';
+
+// whisper-cli defaults to min(4, cores) and never looks again, so a 32-core
+// desktop transcribes at laptop speed. MEASURED on this project's own binary
+// (large-v3, a 96 s file): -t 4 = 242 s, -t 16 = 72 s — 3.4x — with byte-identical
+// output. Leave 2 cores for the UI and the rest of the machine, never drop below
+// whisper's own default (so a genuine quad-core cannot regress), and cap at 24:
+// whisper's thread scaling flattens well before that as memory bandwidth, not
+// cores, becomes the limit.
+function whisperThreads() {
+  let cores = 4;
+  try {
+    cores = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+  } catch (_) { cores = 4; }
+  if (!Number.isFinite(cores) || cores < 1) cores = 4;
+  return String(Math.max(4, Math.min(cores - 2, 24)));
+}
+
+// Does this whisper-cli understand --vad? Windows gets a known-good build from
+// setup.ps1, but macOS uses whatever Homebrew installed, and a pre-2025
+// whisper-cpp exits non-zero on an unknown flag — which the engine would then
+// report as a failed transcription. Probe once per binary per app run: --help is
+// cheap and the answer cannot change while we are running.
+const vadSupport = new Map();
+
+function whisperSupportsVad(bin) {
+  if (vadSupport.has(bin)) return vadSupport.get(bin);
+  let ok = false;
+  try {
+    const r = require('child_process').spawnSync(bin, ['--help'], {
+      encoding: 'utf8', windowsHide: true, timeout: 15000, env: paths.childEnv(),
+    });
+    ok = /--vad\b/.test(`${(r && r.stdout) || ''}${(r && r.stderr) || ''}`);
+  } catch (_) { ok = false; }
+  vadSupport.set(bin, ok);
+  return ok;
+}
 
 // Absolute System32 path for taskkill — a bare 'taskkill' is resolved via the
 // child search path, which on Windows includes the process cwd, so a taskkill.exe
@@ -304,6 +345,23 @@ function whisperOutputPlan({ platform, input, workDir }) {
   };
 }
 
+// win32 codepage safety for a path ARGUMENT handed to whisper (-m, -vm). The
+// file's own name is ASCII; it is the directory that can carry a non-ASCII
+// Windows profile name, so hardlinking it into the ASCII workDir (instant, no
+// data copy on the same volume) gives whisper a path its ANSI argv survives.
+// Returns the path to pass and the link to reclaim afterwards (null when none
+// was made). Cross-volume or perms failures fall back to the real path — no
+// worse than before. A no-op off win32 and for already-ASCII paths.
+function asciiArgPath(realPath, workDir) {
+  if (!IS_WIN || isAsciiPath(realPath) || !isAsciiPath(workDir)) return { arg: realPath, link: null };
+  const linked = path.join(workDir, path.basename(realPath));
+  try {
+    if (!fs.existsSync(linked)) fs.linkSync(realPath, linked);
+    if (isAsciiPath(linked)) return { arg: linked, link: linked };
+  } catch (_) { /* cross-volume or perms — keep the real path */ }
+  return { arg: realPath, link: null };
+}
+
 // EXDEV-safe move: the ASCII workDir (under %TEMP%) and the destination folder
 // can live on different volumes on Windows, where rename() throws EXDEV.
 function moveOutput(from, to) {
@@ -476,14 +534,25 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
   // the link is no better); cross-volume / perms failures fall back to the real
   // path — no worse than before. The link sits in workDir, so the queue's
   // teardown reclaims it with everything else. darwin: IS_WIN gate skips this.
-  let modelForWhisper = modelFile;
-  let modelLink = null;
-  if (IS_WIN && !isAsciiPath(modelFile) && isAsciiPath(workDir)) {
-    const linked = path.join(workDir, path.basename(modelFile));
-    try {
-      if (!fs.existsSync(linked)) fs.linkSync(modelFile, linked);
-      if (isAsciiPath(linked)) { modelForWhisper = linked; modelLink = linked; }
-    } catch (_) { /* cross-volume or perms — keep the original model path */ }
+  const modelArg = asciiArgPath(modelFile, workDir);
+  const modelForWhisper = modelArg.arg;
+
+  // --vad (Silero) — the reason this exists: on SILENCE, whisper does not stay
+  // quiet, it hallucinates. MEASURED here, 60 s of room tone at -l hr produced
+  // the fabricated sentence "Hvala što pratite kanal." twice — grammatical,
+  // plausible, never spoken, and indistinguishable from a mishearing once it is
+  // sitting in someone's interview transcript. With VAD the same audio yields an
+  // empty file, and a real-speech control run came out diff-identical, so nothing
+  // is lost. Gated on the model being present AND the binary understanding the
+  // flag, so anyone who never re-runs setup keeps exactly today's behavior.
+  // -vm is a fourth path through whisper's ANSI argv, so it needs the same
+  // ASCII-hardlink treatment as -m (see the non-ASCII username note above).
+  const vadModelFile = paths.modelPath(VAD_MODEL_FILE);
+  let vadArgs = [];
+  let vadArg = { arg: null, link: null };
+  if (isNonEmptyFile(vadModelFile) && whisperSupportsVad(whisperBin)) {
+    vadArg = asciiArgPath(vadModelFile, workDir);
+    vadArgs = ['--vad', '-vm', vadArg.arg];
   }
 
   // Whisper stderr goes to a per-job log kept on failure (path lands in
@@ -496,7 +565,10 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
   try {
     if (job.canceled) throw canceledError();
     const child = spawnTool(whisperBin, [
-      '-m', modelForWhisper, '-f', wav, '-l', langCode, '-otxt', '-osrt', '-of', ofBase, '-pp',
+      '-m', modelForWhisper, '-f', wav, '-l', langCode,
+      '-t', whisperThreads(),
+      ...vadArgs,
+      '-otxt', '-osrt', '-of', ofBase, '-pp',
     ]);
     child.__job = job;
     if (onChild) onChild(child);
@@ -536,6 +608,22 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
       throw transcribeError(1, stderrText, modelSel, fileName,
         `${lastLines(wErr.value, 15)}\nDetails: ${logFile}`);
     }
+    // Replace whisper's untimed -otxt output with a readable, TIMESTAMPED
+    // transcript built from the cues it just wrote. "She said that around minute
+    // 34 — where is it?" is most of what an interview or lecture transcript is
+    // for, and answering it used to mean correlating the wall-of-text .txt
+    // against the subtitle-shaped .srt by hand. Still exactly two files.
+    //
+    // Written over producedTxt (not the destination) so the rename loop below
+    // carries it the rest of the way — which also makes this correct on darwin,
+    // where producedTxt IS the destination and renames is empty. Any failure
+    // leaves whisper's plain .txt in place: a readable transcript is an
+    // improvement, never a precondition.
+    try {
+      const cues = srtFormat.parseSrt(fs.readFileSync(producedSrt, 'utf8'));
+      if (cues.length) fs.writeFileSync(producedTxt, srtFormat.toReadableText(cues), 'utf8');
+    } catch (_) { /* keep whisper's plain .txt */ }
+
     // win32: move the ASCII workDir outputs to the real destination with
     // Node's Unicode-safe fs. darwin: renames is empty — whisper already wrote
     // straight to txt/srt. A destination the user still has open (the case the
@@ -559,7 +647,9 @@ async function transcribe({ input, modelSel, lang, workDir, onProgress, onChild 
     // itself is deleted — removing it here avoids invisible disk retention if the
     // queue's whole-dir rmrf later loses a lock race. maxRetries covers the beat
     // after a cancel while whisper is still unmapping.
-    if (modelLink) { try { fs.rmSync(modelLink, { force: true, maxRetries: 10, retryDelay: 150 }); } catch (_) { /* queue teardown will retry */ } }
+    for (const link of [modelArg.link, vadArg.link]) {
+      if (link) { try { fs.rmSync(link, { force: true, maxRetries: 10, retryDelay: 150 }); } catch (_) { /* queue teardown will retry */ } }
+    }
     if (!keepLog) {
       logStream.destroy();
       fs.rmSync(logFile, { force: true });

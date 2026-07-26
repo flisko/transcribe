@@ -37,6 +37,13 @@ $Models = @('ggml-large-v3.bin', 'ggml-large-v3-turbo.bin')
 $OptionalModels = @('ggml-medium.bin', 'ggml-small.bin', 'ggml-base.bin', 'ggml-tiny.bin')
 $BaseUrl = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
 
+# Voice Activity Detection. Tiny (885KB) but it is the difference between a
+# transcript of a silent passage being empty and it being an invented sentence:
+# without VAD, whisper "hears" speech in room tone and writes something
+# plausible. Downloaded for everyone, always — it costs a second.
+$VadModel = 'ggml-silero-v5.1.2.bin'
+$VadUrl   = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/$VadModel"
+
 $WhisperUrl = 'https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip'
 $FfmpegUrl  = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
 $YtDlpUrl   = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
@@ -417,6 +424,22 @@ if (Test-Path -LiteralPath (Join-Path $DenoDir 'deno.exe')) {
 
 New-Item -ItemType Directory -Force -Path $ModelsDir | Out-Null
 $downloadFailed = $false
+
+# Voice Activity Detection model — small, always wanted (even with -ToolsOnly),
+# and the app silently skips VAD when it is absent, so a failure here is not
+# worth stopping the run for.
+$VadPath = Join-Path $ModelsDir $VadModel
+if (-not (Test-Path -LiteralPath $VadPath)) {
+  Write-Host "Downloading the silence detector (under 1MB)…"
+  $vadStage = "$VadPath.download"
+  if (Invoke-CurlDownload (Resolve-Url $VadUrl) $vadStage) {
+    Move-Item -LiteralPath $vadStage -Destination $VadPath -Force
+    Write-Host "Silence detector installed — transcripts of quiet passages stay empty instead of being guessed."
+  } else {
+    Remove-Item -LiteralPath $vadStage -Force -ErrorAction SilentlyContinue
+    Write-Host "NOTE: couldn't download the silence detector. Everything still works; run this file again later."
+  }
+}
 
 # Which models to fetch this run: the two main ones always; the optional small
 # ones with -AllModels, on request, or when a (possibly partial) copy is

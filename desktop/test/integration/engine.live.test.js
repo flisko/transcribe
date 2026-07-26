@@ -161,6 +161,15 @@ test('transcribe: diacritics+spaces name, fast/hr → txt+srt, early 1%, progres
   console.log('transcript head:', text.slice(0, 120));
   assert.ok(text.length > 0, 'transcript non-empty');
 
+  // The .txt is built from the cues, so it carries times. This also guards the
+  // failure mode that shipped once: the rewrite lives in a try/catch that falls
+  // back to whisper's plain -otxt output, so a programming error inside it is
+  // INVISIBLE — a shadowed import made it silently fall back for a while.
+  assert.match(text, /^\[\d+:\d{2}(?::\d{2})?\] \S/,
+    'transcript opens with a timestamp, not whisper raw output');
+  const { stripTimestamps } = require('../../shared/srt.js');
+  assert.ok(!/\[\d+:\d{2}/.test(stripTimestamps(text)), 'stamps are strippable for the clipboard');
+
   // Early 1% (short-clip fix) must arrive before anything larger, and rise to 100.
   assert.ok(pcts.includes(1), 'saw the early 1%');
   const idx1 = pcts.indexOf(1);
@@ -168,6 +177,29 @@ test('transcribe: diacritics+spaces name, fast/hr → txt+srt, early 1%, progres
   assert.ok(pcts[pcts.length - 1] === 100, 'ends at 100');
   for (let i = 1; i < pcts.length; i++) assert.ok(pcts[i] > pcts[i - 1], 'monotone');
   assert.ok(!fs.existsSync(path.join(workDir, 'audio.wav')), 'wav cleaned');
+});
+
+// THE regression guard for the hallucination fix. Without --vad, 60 s of room
+// tone at -l hr produces the invented Croatian sentence "Hvala što pratite
+// kanal." — grammatical, plausible, and indistinguishable from a mishearing once
+// it is in someone's interview. Silence must transcribe to nothing.
+test('silence transcribes to nothing (VAD)', { skip:
+  (!HAS_MODELS && 'models not downloaded (CI never fetches them)')
+  || (!fs.existsSync(path.join(REPO_ROOT, 'models', 'ggml-silero-v5.1.2.bin'))
+      && 'VAD model not installed — run setup') }, async () => {
+  const dir = scratch('silence');
+  const workDir = scratch('silencework');
+  const ffmpeg = require('../../main/paths.js').findTool('ffmpeg');
+  assert.ok(ffmpeg, 'ffmpeg required');
+  const input = path.join(dir, 'tišina.wav');
+  execFileSync(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'lavfi',
+    '-i', 'anoisesrc=d=60:c=pink:a=0.0008', '-ar', '16000', '-ac', '1',
+    '-c:a', 'pcm_s16le', input]);
+
+  const { txt } = await engine.transcribe({ input, modelSel: 'fast', lang: 'hr', workDir });
+  const text = fs.readFileSync(txt, 'utf8').trim();
+  console.log('silence transcript:', JSON.stringify(text));
+  assert.equal(text, '', 'whisper must not invent speech in silence');
 });
 
 test('dlInfo: zoo video → title/duration', async (t) => {

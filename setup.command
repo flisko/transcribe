@@ -16,6 +16,13 @@ MODELS=("ggml-large-v3.bin" "ggml-large-v3-turbo.bin")
 OPTIONAL_MODELS=("ggml-medium.bin" "ggml-small.bin" "ggml-base.bin" "ggml-tiny.bin")
 BASE_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
+# Voice Activity Detection. Tiny (885KB) but it is the difference between a
+# transcript of a silent passage being empty and it being an invented sentence:
+# without VAD, whisper "hears" speech in room tone and writes something
+# plausible. Downloaded for everyone, always — it costs a second.
+VAD_MODEL="ggml-silero-v5.1.2.bin"
+VAD_URL="https://huggingface.co/ggml-org/whisper-vad/resolve/main/$VAD_MODEL"
+
 # Smallest believable size per model — anything under this is a truncated
 # download left by an interrupted run, not a usable model.
 # Keep in sync with the app's model catalog (app/Logic.swift).
@@ -121,6 +128,23 @@ expected_size_for() {
 
 mkdir -p models
 download_failed=0
+
+# Voice Activity Detection model — small, always wanted, and the app silently
+# skips VAD if it is missing, so a failure here is not worth stopping for.
+# Only fetched when the installed whisper-cli actually understands --vad
+# (Homebrew's build lagged the flag for a while); the app makes the same check.
+if [ ! -f "models/$VAD_MODEL" ]; then
+  if whisper-cli --help 2>&1 | grep -q -- '--vad'; then
+    echo "Downloading the silence detector (${VAD_MODEL%%.*}, under 1MB)…"
+    if curl -C - -L --fail -o "models/$VAD_MODEL.download" "$VAD_URL" 2>/dev/null; then
+      mv -f "models/$VAD_MODEL.download" "models/$VAD_MODEL"
+      echo "Silence detector installed — transcripts of quiet passages stay empty instead of being guessed."
+    else
+      rm -f "models/$VAD_MODEL.download"
+      echo "NOTE: couldn't download the silence detector. Everything still works; run this file again later."
+    fi
+  fi
+fi
 
 # Which models to fetch this run: the two main ones always; the optional small
 # ones with --all-models, on request, or when a (possibly partial) copy is

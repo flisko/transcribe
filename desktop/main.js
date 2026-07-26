@@ -34,11 +34,9 @@ app.setName('Transcribe');
 // even when the user moves the portable folder.
 if (process.platform === 'win32') app.setAppUserModelId('com.flisko.transcribe');
 
-const MEDIA_EXTS = [
-  'mp4', 'mov', 'm4v', 'mkv', 'webm', 'avi', 'wmv', 'flv', 'mts', 'm2ts',
-  '3gp', 'mpg', 'mpeg', 'ts',
-  'mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'opus', 'wma', 'aiff', 'aif', 'caf',
-];
+// One list, shared with the queue's dropped-folder scan, so the Browse… filter
+// and what a dropped folder picks up can never drift apart.
+const MEDIA_EXTS = [...require('./main/queue').MEDIA_EXTS];
 
 let mainWindow = null;
 let settingsWindow = null;

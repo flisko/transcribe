@@ -26,6 +26,12 @@ const DELAYS = Object.freeze({ flash: 400, copied: 2000, note: 4000, lookupWatch
 const AUDIO_EXTS = new Set(['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg',
                             'opus', 'wma', 'aiff', 'aif', 'caf']);
 
+// Everything ffmpeg can read the sound out of. Shared with main.js so the file
+// dialog's filter and the dropped-folder scan can never drift apart.
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v', 'mkv', 'webm', 'avi', 'wmv', 'flv',
+                            'mts', 'm2ts', '3gp', 'mpg', 'mpeg', 'ts']);
+const MEDIA_EXTS = new Set([...VIDEO_EXTS, ...AUDIO_EXTS]);
+
 const ACTIVE_STATES = new Set(['lookingUp', 'downloading', 'preparing', 'transcribing']);
 const FINISHED_STATES = new Set(['done', 'failed', 'canceled']);
 
@@ -387,9 +393,32 @@ function createQueue(opts) {
 
   // MARK: Adding work
 
+  // Dropping a FOLDER of lectures is the first thing people try with a batch,
+  // and it used to make one row that failed with "the file can't be found any
+  // more" — a message that is not merely unhelpful but false, since the folder is
+  // right there. Expand it into the media files it holds, in name order. One
+  // level only: predictable, and it matches what "drop this folder" means to a
+  // person who has a folder of recordings, not a tree of them.
+  function expandFolders(list) {
+    const out = [];
+    for (const raw of list) {
+      let st = null;
+      try { st = fs.statSync(raw); } catch { /* gone — let addFiles report it */ }
+      if (!st || !st.isDirectory()) { out.push(raw); continue; }
+      let names = [];
+      try { names = fs.readdirSync(raw).sort((a, b) => a.localeCompare(b)); } catch { }
+      for (const name of names) {
+        if (!MEDIA_EXTS.has(path.extname(name).slice(1).toLowerCase())) continue;
+        const p = path.join(raw, name);
+        try { if (fs.statSync(p).isFile()) out.push(p); } catch { }
+      }
+    }
+    return out;
+  }
+
   function addFiles(paths) {
     if (phase !== 'ready') return;
-    for (const raw of Array.isArray(paths) ? paths : []) {
+    for (const raw of expandFolders(Array.isArray(paths) ? paths : [])) {
       if (typeof raw !== 'string' || !raw) continue;
       let p;
       try { p = fs.realpathSync(raw); } catch { p = path.resolve(raw); }
@@ -941,7 +970,10 @@ function createQueue(opts) {
       showActionNote(id, copy.fileGoneNote);
       return;
     }
-    sys.copyText(content);
+    // The file carries timestamps; the clipboard should not. "Copy Transcript
+    // Text" exists to paste into an email or a document, where "[12:04] " in
+    // front of every paragraph is something the user has to delete by hand.
+    sys.copyText(require('../shared/srt').stripTimestamps(content));
     it.copiedFlash = true;
     changed();
     later(delays.copied, () => {
@@ -1267,4 +1299,4 @@ function createQueue(opts) {
   };
 }
 
-module.exports = { createQueue, createSystemAdapter, outputPaths, chooseJobBase, DELAYS };
+module.exports = { createQueue, createSystemAdapter, outputPaths, chooseJobBase, MEDIA_EXTS, DELAYS };

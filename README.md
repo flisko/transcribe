@@ -90,6 +90,21 @@ Get-FileHash Transcribe-windows-v1.0.12.zip     # Windows
    gets a `.txt` transcript **and** a `.srt` subtitle file saved right next
    to it; link downloads land in your downloads folder.
 
+The `.txt` is timestamped, so you can find a moment again:
+
+```
+[0:00] Dobar dan, hvala što ste došli. Danas razgovaramo o…
+
+[2:14] Da, to je počelo prije otprilike deset godina.
+```
+
+**Copy Transcript Text** copies the words without the timestamps, so pasting
+into an email or a document gives you clean prose. The `.srt` keeps the exact
+per-line timings for video.
+
+You can also **drop a whole folder** on the window — every audio and video file
+inside it joins the queue.
+
 ### Video links
 
 A link is downloaded first, then transcribed like any other file. Normally
