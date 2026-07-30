@@ -22,8 +22,24 @@ files:
 
 mac:
   target: zip
-  identity: null # ad-hoc; first launch needs Gatekeeper bypass, same as 2.0
   icon: build/icon.icns
+  # Signing is decided by the ENVIRONMENT, not by this file, so one config
+  # produces both builds:
+  #   • Developer ID cert in the keychain -> electron-builder discovers it and
+  #     signs; CI adds -c.mac.notarize=true on top (see .github/workflows/release.yml).
+  #   • CSC_IDENTITY_AUTO_DISCOVERY=false -> signing is skipped entirely. That is
+  #     what a local `npm run dist` and a credential-less CI run both get, and it
+  #     is why a missing or expired secret degrades to the old unsigned build
+  #     instead of failing every release on main.
+  # WHY IT MATTERS BEYOND THE GATEKEEPER PROMPT: TCC keys its grants to the app's
+  # code identity. The ad-hoc "linker-signed, Identifier=Electron" bundle this
+  # used to ship is the fragile case — a user could allow Downloads access, have
+  # it work, and find the grant gone the next morning, which is exactly the
+  # "can't find setup.command" report this all started from. A Developer ID
+  # signature gives a stable designated requirement, so the grant sticks.
+  hardenedRuntime: true # required for notarization; needs the entitlements below
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   # A second copy of the setup entry point, inside the bundle. The one that
   # actually runs is still the sibling beside the app (setup.command does
   # `cd "$(dirname "$0")"` and downloads 4.6GB of models next to itself), but

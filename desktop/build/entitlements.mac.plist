@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime entitlements. Notarization REQUIRES the hardened runtime, and
+  the hardened runtime breaks Electron without these four — the app would sign
+  and notarize cleanly and then crash on launch, which is the worst possible
+  failure mode to discover in a release.
+
+    allow-jit / allow-unsigned-executable-memory
+      V8 compiles JavaScript to machine code at runtime and needs writable-
+      executable pages to do it.
+    allow-dyld-environment-variables
+      Electron sets DYLD_* when launching its helper processes.
+    disable-library-validation
+      The framework and the three Helper bundles are separate signed binaries
+      loaded by the main executable; without this, library validation can reject
+      them even when every one carries the same Team ID.
+
+  NOT included, deliberately: nothing about the network, the microphone, or the
+  filesystem. Transcription is local, the app is not sandboxed, and an
+  entitlement it doesn't need is one more thing to justify.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>
