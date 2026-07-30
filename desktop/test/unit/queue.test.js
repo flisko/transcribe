@@ -76,6 +76,9 @@ const stubCopy = {
   updateCheckFailed: "Couldn't check for updates just now.",
   updateCheckUnavailable: 'The update service had no answer.',
   updateCheckOff: 'This copy was built locally.',
+  updateDownloading: (pct) => `Downloading the update — ${pct}%`,
+  updateInstalling: 'Installing — Transcribe will restart in a moment…',
+  updateInstallFailed: "The update couldn't be installed.",
 };
 
 const stubCatalog = {
@@ -149,6 +152,9 @@ const TEST_DELAYS = { flash: 25, copied: 40, note: 40, lookupWatchdog: 80 };
 function harness(t, opts = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'transcribe-qt-'));
   t.after(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { } });
+  // Entries planted in the download folder BEFORE createQueue, so a test can
+  // observe whether construction itself touches that folder.
+  for (const name of opts.seedDownloadFolder || []) fs.mkdirSync(path.join(dir, name), { recursive: true });
   const logFile = path.join(dir, 'actions.jsonl');
   const settings = createSettings({ file: path.join(dir, 'settings.json'), downloadsDir: dir });
   for (const [k, v] of Object.entries(opts.settings || {})) settings.set(k, v);
@@ -626,7 +632,7 @@ test('snapshot shape: C4 fields, banner lifecycle, clear done, selection hint', 
   snap = h.queue.snapshot();
   // banner.text is composed by main (C4) so the notice follows the UI language.
   assert.deepStrictEqual(snap.banner,
-    { version: '9.9', url: 'https://example.com/rel', text: 'Version 9.9 is available.' });
+    { version: '9.9', url: 'https://example.com/rel', text: 'Version 9.9 is available.', busy: false });
   assert.deepStrictEqual(h.queue.getBanner(),
     { version: '9.9', url: 'https://example.com/rel', text: 'Version 9.9 is available.' });
   h.queue.dismissBanner();
@@ -805,4 +811,103 @@ test('linkValid mirrors the classifier; addFiles ignored during setup phase', (t
   q2.addFiles([path.join(dir, 'x.mp4')]);
   assert.strictEqual(q2.snapshot().items.length, 0, 'setup phase accepts no work');
   assert.strictEqual(q2.addLink('https://a.com/x'), false);
+});
+
+// MARK: The Update button must not look dead while it works
+//
+// THE BUG: the banner is the only update UI in the main window, and its text was
+// composed once by setBanner and never refreshed. Pressing Update kicked off a
+// ~217MB download while the banner kept reading "Version X is available." and the
+// button stayed live — indistinguishable from a click that did nothing, which is
+// exactly how it was reported.
+
+test('banner text tracks the install, and the button goes busy', (t) => {
+  const h = harness(t);
+  h.queue.setUpdateState({
+    supported: true, result: 'available', latestVersion: '1.0.99',
+    url: 'https://example.com/r', asset: { url: 'https://example.com/a.zip' },
+  });
+  h.queue.setBanner({ version: '1.0.99', url: 'https://example.com/r' });
+  assert.strictEqual(h.queue.snapshot().banner.text, 'Version 1.0.99 is available.');
+  assert.strictEqual(h.queue.snapshot().banner.busy, false);
+
+  h.queue.setUpdateState({ installing: true, installPct: 0 });
+  assert.strictEqual(h.queue.snapshot().banner.text, 'Downloading the update — 0%');
+  assert.strictEqual(h.queue.snapshot().banner.busy, true, 'a second press must be impossible');
+
+  h.queue.setUpdateState({ installPct: 37 });
+  assert.strictEqual(h.queue.snapshot().banner.text, 'Downloading the update — 37%');
+
+  // Past the download there is no percentage left to report.
+  h.queue.setUpdateState({ installPct: null });
+  assert.strictEqual(h.queue.snapshot().banner.text,
+    'Installing — Transcribe will restart in a moment…');
+});
+
+test('a failed install says so in the banner and frees the button again', (t) => {
+  const h = harness(t);
+  h.queue.setUpdateState({ supported: true, result: 'available', latestVersion: '1.0.99', url: 'https://x' });
+  h.queue.setBanner({ version: '1.0.99', url: 'https://x' });
+  h.queue.setUpdateState({ installing: true, installPct: 10 });
+  h.queue.setUpdateState({ installing: false, installPct: null, installError: stubCopy.updateInstallFailed });
+
+  const b = h.queue.snapshot().banner;
+  assert.strictEqual(b.text, "The update couldn't be installed.");
+  assert.strictEqual(b.busy, false, 'retryable');
+});
+
+// getBanner feeds main.js's openReleasePage fallback, which wants the release
+// URL and nothing else — it must not start carrying transient install state.
+test('getBanner stays the raw notice, unaffected by install progress', (t) => {
+  const h = harness(t);
+  h.queue.setBanner({ version: '2.0', url: 'https://example.com/rel' });
+  h.queue.setUpdateState({ installing: true, installPct: 55 });
+  assert.deepStrictEqual(h.queue.getBanner(),
+    { version: '2.0', url: 'https://example.com/rel', text: 'Version 2.0 is available.' });
+});
+
+// MARK: The download folder must not be read at startup
+//
+// THE BUG: the crashed-download sweep ran readdirSync on the download folder in
+// the constructor. On macOS that folder defaults to ~/Downloads, which is
+// TCC-protected, so merely launching the app raised a "would like to access files
+// in your Downloads folder" prompt before the user had asked for anything. Deny
+// it and every later download silently fails; it is also one more scary dialog
+// for a non-technical user on first run. The sweep still has to happen — it just
+// belongs at the first download, where touching that folder is what the user
+// asked for.
+
+test('construction does not touch the download folder', (t) => {
+  const h = harness(t, { seedDownloadFolder: ['.transcribe-dl.999.0'] });
+  assert.strictEqual(fs.existsSync(path.join(h.dir, '.transcribe-dl.999.0')), true,
+    'a stale staging dir survives startup, because startup never looked');
+});
+
+test('the first download sweeps stale staging dirs, and leaves everything else', async (t) => {
+  const h = harness(t, { seedDownloadFolder: ['.transcribe-dl.999.0', 'holiday-videos'] });
+  fs.writeFileSync(path.join(h.dir, 'keep-me.mp4'), 'x');
+
+  h.queue.addLink('https://example.com/watch?v=abc');
+  await settle();
+
+  assert.strictEqual(fs.existsSync(path.join(h.dir, '.transcribe-dl.999.0')), false, 'swept');
+  assert.strictEqual(fs.existsSync(path.join(h.dir, 'holiday-videos')), true, "user's folder untouched");
+  assert.strictEqual(fs.existsSync(path.join(h.dir, 'keep-me.mp4')), true, "user's file untouched");
+});
+
+// Once per launch, not once per download: re-reading the folder on every link is
+// pointless work, and after the first sweep any .transcribe-dl.* dir it found
+// would belong to a download of ours that is currently live.
+test('the sweep happens once, not on every download', async (t) => {
+  const h = harness(t, { seedDownloadFolder: ['.transcribe-dl.999.0'] });
+  h.queue.addLink('https://example.com/one');
+  await settle();
+  assert.strictEqual(fs.existsSync(path.join(h.dir, '.transcribe-dl.999.0')), false);
+
+  // A live staging dir from the download now in flight must survive a second add.
+  fs.mkdirSync(path.join(h.dir, '.transcribe-dl.live.0'), { recursive: true });
+  h.queue.addLink('https://example.com/two');
+  await settle();
+  assert.strictEqual(fs.existsSync(path.join(h.dir, '.transcribe-dl.live.0')), true,
+    'a live download must never be swept out from under itself');
 });

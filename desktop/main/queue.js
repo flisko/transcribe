@@ -278,15 +278,30 @@ function createQueue(opts) {
   // `<downloadFolder>/.transcribe-dl.<pid>.<n>` and removes it in a finally, so
   // a normal finish/cancel/failure never leaks. A crash, force-kill, or power
   // loss skips that finally and strands a half-downloaded video in the user's
-  // Downloads folder forever. Safe for the same reason as the job-dir sweep: the
-  // app is single-instance, so at construction no download of ours is live, and
-  // the prefix belongs to this app alone.
-  try {
-    const dest = settings.downloadFolder();
-    for (const n of fs.readdirSync(dest)) {
-      if (n.startsWith('.transcribe-dl.')) rmrf(path.join(dest, n));
-    }
-  } catch { /* folder gone or unreadable — nothing to sweep */ }
+  // Downloads folder forever.
+  //
+  // DEFERRED, unlike the job-dir sweep above, and not for tidiness: this one
+  // reads the user's download folder, which on macOS defaults to ~/Downloads —
+  // a TCC-protected location. Doing it at construction meant merely launching the
+  // app raised "Transcribe would like to access files in your Downloads folder"
+  // before the user had asked for anything, and a "Don't Allow" there silently
+  // breaks every later download. So it happens at the first download instead,
+  // where touching that folder is precisely what the user just asked for.
+  //
+  // Once per launch, before the first download starts: the app is single-instance
+  // and nothing of ours is downloading yet, so every .transcribe-dl.* found is
+  // certainly stale. Sweeping again later could delete a live staging dir.
+  let downloadStagingSwept = false;
+  function sweepStaleDownloadStaging() {
+    if (downloadStagingSwept) return;
+    downloadStagingSwept = true;
+    try {
+      const dest = settings.downloadFolder();
+      for (const n of fs.readdirSync(dest)) {
+        if (n.startsWith('.transcribe-dl.')) rmrf(path.join(dest, n));
+      }
+    } catch { /* folder gone or unreadable — nothing to sweep */ }
+  }
 
   function byId(id) { return items.find((it) => it.id === id) || null; }
   function indexOf(id) { return items.findIndex((it) => it.id === id); }
@@ -623,6 +638,9 @@ function createQueue(opts) {
     it.capturedModel = settings.get('model');
     it.capturedLanguage = settings.get('language');
     it.capturedKeepVideo = !!settings.get('keepVideo');
+    // Before destFolder is read, so the folder is touched once, here, rather than
+    // at launch (see sweepStaleDownloadStaging).
+    sweepStaleDownloadStaging();
     it.destFolder = settings.downloadFolder();
     if (it.startedAt == null) it.startedAt = now();
     it.stageStartedAt = now();
@@ -1205,6 +1223,22 @@ function createQueue(opts) {
     };
   }
 
+  // The banner is the ONLY update UI in the main window (Settings ▸ Updates is
+  // the other view, and nobody opens it to watch a download), so it has to carry
+  // the install's progress too.
+  //
+  // WHY: `banner.text` was composed once by setBanner and never refreshed.
+  // Pressing Update started a ~217MB download while the banner went on reading
+  // "Version X is available." and the button stayed live — indistinguishable from
+  // a click that did nothing, which is exactly how it got reported. `busy` is
+  // what stops a second press landing on an install already in flight.
+  function bannerForView() {
+    if (!banner) return null;
+    const busy = !!update.installing;
+    if (!busy && !update.installError) return { ...banner, busy: false };
+    return { ...banner, text: updateStatusText(), busy };
+  }
+
   function footerText() {
     const total = items.length;
     if (transcribingID != null) {
@@ -1239,7 +1273,7 @@ function createQueue(opts) {
       },
       items: items.map(viewItem),
       footer: { text: footerText(), showCancelAll: hasUnfinishedWork() },
-      banner,
+      banner: bannerForView(),
       settings: {
         model: settings.get('model'),
         language: settings.get('language'),

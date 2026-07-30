@@ -79,4 +79,41 @@ function ensureSetupScript({ root, resourcesPath, platform = process.platform } 
   return { status: 'restored', path: target };
 }
 
-module.exports = { ensureSetupScript, setupScriptName, bundledNames };
+// Everything else the release folder normally holds beside the app. mac only:
+// bin/ is a pair of bash helpers, and there is no Windows equivalent.
+function companionNames(platform) {
+  return platform === 'win32' ? [] : ['bin', 'README.md'];
+}
+
+/// restoreCompanions({ root, resourcesPath, platform }) -> names restored
+///
+/// The copy-app relocation path has only the bundle to work from: a translocated
+/// app runs from a read-only mount that contains Transcribe.app and nothing else,
+/// so the release folder's bin/ and README.md are simply not reachable. Without
+/// this, relocating out of ~/Downloads produced a folder holding the app and
+/// setup.command alone and the user quietly lost the CLI helpers.
+///
+/// Purely additive and entirely best-effort: existing files are never touched
+/// (a move-folder relocation already brought the real ones across), and nothing
+/// here may fail a relocation that otherwise succeeded — these are conveniences,
+/// and the app itself never reads them.
+function restoreCompanions({ root, resourcesPath, platform = process.platform } = {}) {
+  if (!root || !resourcesPath) return [];
+  const restored = [];
+  for (const name of companionNames(platform)) {
+    const dest = path.join(root, name);
+    const src = path.join(resourcesPath, name);
+    try {
+      if (fs.existsSync(dest) || !fs.existsSync(src)) continue;
+      // recursive: bin/ is a directory. Mode bits ride along, which matters —
+      // bin/transcribe without its exec bit is not a helper.
+      fs.cpSync(src, dest, { recursive: true, preserveTimestamps: true });
+      restored.push(name);
+    } catch (_) { /* cosmetic: never fail the relocation over a README */ }
+  }
+  return restored;
+}
+
+module.exports = {
+  ensureSetupScript, setupScriptName, bundledNames, restoreCompanions, companionNames,
+};

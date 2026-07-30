@@ -112,7 +112,14 @@
 
   function renderBanner(banner) {
     $('banner').hidden = !banner;
-    if (banner) $('bannerMsg').textContent = banner.text || ('Version ' + banner.version + ' is available.');
+    if (!banner) return;
+    $('bannerMsg').textContent = banner.text || ('Version ' + banner.version + ' is available.');
+    // While the install runs, banner.text IS the progress (see queue's
+    // bannerForView). Disable rather than hide, so the row doesn't jump: the
+    // button must stop accepting presses, and dismissing mid-install would throw
+    // away the only feedback the user has.
+    $('bannerDownloadBtn').disabled = !!banner.busy;
+    $('bannerDismissBtn').disabled = !!banner.busy;
   }
 
   function renderQuickSettings(s) {

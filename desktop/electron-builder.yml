@@ -49,6 +49,14 @@ mac:
   extraResources:
     - from: ../setup.command
       to: setup.command
+    # The rest of the release folder, for the same reason: a translocated app can
+    # only see its own bundle, so relocating out of ~/Downloads had nothing to
+    # copy bin/ and README.md FROM and quietly dropped them
+    # (main/setup-script.js restoreCompanions).
+    - from: ../bin
+      to: bin
+    - from: ../README.md
+      to: README.md
   category: public.app-category.productivity
   minimumSystemVersion: '13.0'
   # Same file associations as the 2.0 Info.plist: lets users drop audio/video

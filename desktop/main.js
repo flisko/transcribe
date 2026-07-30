@@ -25,7 +25,7 @@ const { filterStartupArgs, resolveOpenArg } = require('./main/startup-args');
 const { createInstagram } = require('./main/instagram');
 const paths = require('./main/paths');
 const relocate = require('./main/relocate');
-const { ensureSetupScript } = require('./main/setup-script');
+const { ensureSetupScript, restoreCompanions } = require('./main/setup-script');
 
 app.setName('Transcribe');
 
@@ -468,6 +468,10 @@ async function performRelocation(plan, target) {
   // Both halves of what the README used to ask users to do by hand.
   await relocate.clearQuarantine(target);
   ensureSetupScript({ root: target, resourcesPath: process.resourcesPath });
+  // After copy-app there is no bin/ or README.md at the destination: the
+  // translocated mount the bundle came from holds nothing but the bundle. A
+  // move-folder relocation already has them, and these are skipped there.
+  restoreCompanions({ root: target, resourcesPath: process.resourcesPath });
   return appPath;
 }
 

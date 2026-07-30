@@ -125,3 +125,62 @@ test('ensureSetupScript: a read-only folder reports unwritable', { skip: !canDen
     fs.rmSync(resources, { recursive: true, force: true });
   }
 });
+
+// MARK: The companions the copy-app path can't reach
+//
+// THE GAP (found in the v1.0.23 flow test): when the app is translocated, the
+// only thing that exists is the bundle — the release folder holding bin/ and
+// README.md is not reachable from inside the read-only mount. So relocating
+// produced ~/Applications/Transcribe with Transcribe.app + setup.command and
+// nothing else. Harmless for the app (it never reads bin/), but the user quietly
+// loses the CLI helpers. Same cure as setup.command: ship them in the bundle.
+
+const { restoreCompanions } = require('../../main/setup-script.js');
+
+test('restoreCompanions: brings bin/ and README.md across, contents and modes intact', () => {
+  const root = tmpdir();
+  const resources = tmpdir();
+  fs.mkdirSync(path.join(resources, 'bin'));
+  fs.writeFileSync(path.join(resources, 'bin', 'transcribe'), '#!/bin/bash\necho hi\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(resources, 'bin', 'download'), '#!/bin/bash\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(resources, 'README.md'), '# Transcribe\n');
+
+  const got = restoreCompanions({ root, resourcesPath: resources, platform: 'darwin' });
+
+  assert.deepEqual(got.sort(), ['README.md', 'bin']);
+  assert.equal(fs.readFileSync(path.join(root, 'bin', 'transcribe'), 'utf8'), '#!/bin/bash\necho hi\n');
+  assert.equal(fs.existsSync(path.join(root, 'bin', 'download')), true);
+  assert.equal(fs.readFileSync(path.join(root, 'README.md'), 'utf8'), '# Transcribe\n');
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(path.join(root, 'bin', 'transcribe')).mode & 0o111, 0o111, 'still runnable');
+  }
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmSync(resources, { recursive: true, force: true });
+});
+
+// A move-folder relocation already carried the real ones across; overwriting
+// would replace whatever the user has with the shipped copy.
+test('restoreCompanions: never overwrites what is already there', () => {
+  const root = tmpdir();
+  const resources = tmpdir();
+  fs.writeFileSync(path.join(resources, 'README.md'), '# shipped\n');
+  fs.writeFileSync(path.join(root, 'README.md'), '# the users own notes\n');
+
+  const got = restoreCompanions({ root, resourcesPath: resources, platform: 'darwin' });
+
+  assert.deepEqual(got, []);
+  assert.equal(fs.readFileSync(path.join(root, 'README.md'), 'utf8'), '# the users own notes\n');
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmSync(resources, { recursive: true, force: true });
+});
+
+// Cosmetic extras must never be able to fail a relocation that otherwise worked.
+test('restoreCompanions: an old build or an unwritable folder is a silent no-op', () => {
+  const empty = tmpdir();
+  const root = tmpdir();
+  assert.deepEqual(restoreCompanions({ root, resourcesPath: empty, platform: 'darwin' }), []);
+  assert.deepEqual(restoreCompanions({ root, resourcesPath: null, platform: 'darwin' }), []);
+  assert.deepEqual(restoreCompanions({ root: '/nonexistent/nope', resourcesPath: empty, platform: 'darwin' }), []);
+  fs.rmSync(empty, { recursive: true, force: true });
+  fs.rmSync(root, { recursive: true, force: true });
+});
