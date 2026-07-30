@@ -127,22 +127,39 @@ function childEnv(opts) {
   return env;
 }
 
-/// Folder integrity (2.0's engineScriptPresent): the setup entry point ships
-/// beside the app in every release zip, so its absence means the app was
-/// copied out of its folder — the setup checklist can't help there.
-function folderMarkerPresent(opts) {
+// The setup entry point ships beside the app in every release zip, so it is
+// what "this is a real Transcribe folder" is measured by.
+function markerNames(platform) {
+  return platform === 'win32' ? ['setup.ps1', 'Transcribe Setup.bat'] : ['setup.command'];
+}
+
+/// Folder integrity (2.0's engineScriptPresent), as three outcomes rather than
+/// two: 'present' | 'missing' | 'blocked'.
+///
+/// WHY THE THIRD ONE. A folder living in ~/Downloads (or ~/Desktop, ~/Documents)
+/// is TCC-protected on macOS: without the user's "allow" the app's own siblings
+/// stat with EPERM, not ENOENT. Collapsing that into false told a user whose
+/// setup.command was plainly visible in Finder to go find the file — the one
+/// instruction that could not help. errno is the whole difference between "put
+/// the file back" and "macOS is refusing to let Transcribe read this folder".
+function folderMarkerStatus(opts) {
   const c = ctx(opts);
   const root = folderRoot(opts);
-  const markers = c.platform === 'win32'
-    ? ['setup.ps1', 'Transcribe Setup.bat']
-    : ['setup.command'];
-  return markers.some((name) => {
+  let blocked = false;
+  for (const name of markerNames(c.platform)) {
     try {
-      return fs.statSync(path.join(root, name)).isFile();
-    } catch (_) {
-      return false;
+      if (fs.statSync(path.join(root, name)).isFile()) return 'present';
+    } catch (e) {
+      // EPERM: macOS TCC. EACCES: ordinary directory permissions (and what the
+      // test reproduces, since TCC can't be provoked from a test runner).
+      if (e && (e.code === 'EPERM' || e.code === 'EACCES')) blocked = true;
     }
-  });
+  }
+  return blocked ? 'blocked' : 'missing';
+}
+
+function folderMarkerPresent(opts) {
+  return folderMarkerStatus(opts) === 'present';
 }
 
 module.exports = {
@@ -152,4 +169,6 @@ module.exports = {
   childPATH,
   childEnv,
   folderMarkerPresent,
+  folderMarkerStatus,
+  markerNames,
 };

@@ -24,6 +24,15 @@ mac:
   target: zip
   identity: null # ad-hoc; first launch needs Gatekeeper bypass, same as 2.0
   icon: build/icon.icns
+  # A second copy of the setup entry point, inside the bundle. The one that
+  # actually runs is still the sibling beside the app (setup.command does
+  # `cd "$(dirname "$0")"` and downloads 4.6GB of models next to itself), but
+  # shipping it here means a folder that lost it — app dragged out on its own,
+  # an unarchiver that skipped it, antivirus eating an unsigned .command — can be
+  # repaired by main/setup-script.js instead of dead-ending the user.
+  extraResources:
+    - from: ../setup.command
+      to: setup.command
   category: public.app-category.productivity
   minimumSystemVersion: '13.0'
   # Same file associations as the 2.0 Info.plist: lets users drop audio/video
@@ -41,3 +50,10 @@ mac:
 win:
   target: zip
   icon: build/icon.ico
+  # Same repair copy as mac, but Windows needs the pair: the .bat is a launcher
+  # that does nothing without setup.ps1 beside it.
+  extraResources:
+    - from: ../Transcribe Setup.bat
+      to: Transcribe Setup.bat
+    - from: ../setup.ps1
+      to: setup.ps1

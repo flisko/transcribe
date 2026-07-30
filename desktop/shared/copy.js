@@ -234,6 +234,31 @@ function english(ctx) {
       : `Transcribe looked for "Transcribe Setup" next to itself and it isn't there.\n\nKeep Transcribe.exe inside the "Transcribe" folder you unzipped, alongside "Transcribe Setup" and the "models" folder, then try again.\n\nLooked in: ${scriptPath}`;
   },
 
+  // NOT the same as "it isn't there" (macOS TCC — see paths.folderMarkerStatus).
+  // The old copy sent people hunting for a file they could see in Finder; this
+  // one names the actual cause and offers the only thing that fixes it.
+  setupBlockedTitle: "Transcribe can't read its own folder",
+  setupBlockedBody(folderPath) {
+    return `macOS is blocking Transcribe from reading:\n\n${folderPath}\n\nThe files are almost certainly still there — this is the privacy restriction on your Downloads, Desktop and Documents folders, not a missing file. Moving the Transcribe folder out of there fixes it for good.`;
+  },
+
+  // Relocation guard (macOS only). Two different OS behaviors, one symptom, one
+  // cure: get out of the protected folder.
+  relocateTitle(folder) { return `Move Transcribe out of ${folder}?`; },
+  relocateBody(folder, target) {
+    return `macOS protects your ${folder} folder, so Transcribe can't reliably reach the files it keeps beside itself — the models, the engine, and ${SETUP_NAME}. That is why setup can look missing even when you can see it in Finder.\n\nTranscribe can move its whole folder, models included, to:\n\n${target}\n\nNothing is downloaded again and your transcripts are left where they are.`;
+  },
+  relocateTranslocatedTitle: 'Transcribe is running from a temporary copy',
+  relocateTranslocatedBody(target) {
+    return `Because it was opened straight from the download, macOS is running Transcribe from a read-only copy with none of its own files beside it — so setup, the engine and the models can't be found.\n\nTranscribe can install itself properly at:\n\n${target}\n\nIt will restart from there. This takes a moment and downloads nothing.`;
+  },
+  relocateMove: 'Move to Applications',
+  relocateNotNow: 'Not Now',
+  relocateFailedTitle: "Couldn't move Transcribe",
+  relocateFailedBody(target, reason) {
+    return `Transcribe couldn't move itself to:\n\n${target}\n\n${reason}\n\nMove the Transcribe folder there yourself in Finder, then open Transcribe.app from its new location.`;
+  },
+
   // Instagram login (in-app; File menu). Instagram gates most reels behind a
   // login, so downloading them needs a logged-in session.
   connectInstagramMenu: 'Connect Instagram…',

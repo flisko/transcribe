@@ -142,3 +142,59 @@ test('folderMarkerPresent: platform-specific setup entry point beside the app', 
   assert.equal(paths.folderMarkerPresent(opts('win32')), true);
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+// ---- folderMarkerStatus: "not there" is NOT the same as "not allowed" -------
+//
+// The bug this exists for: a folder in ~/Downloads that macOS won't let the app
+// read makes statSync throw EPERM, which the old boolean flattened into "the
+// file isn't there" — and the user was told to go looking for a file that was
+// sitting right in front of them in Finder.
+
+test('folderMarkerStatus: present when the setup entry point is readable', () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, 'setup.command'), '#!/bin/bash\n');
+  assert.equal(paths.folderMarkerStatus({ platform: 'darwin', env: { TRANSCRIBE_ROOT: root } }), 'present');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('folderMarkerStatus: missing when the folder is readable but has no marker', () => {
+  const root = tmpdir();
+  assert.equal(paths.folderMarkerStatus({ platform: 'darwin', env: { TRANSCRIBE_ROOT: root } }), 'missing');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// Real EACCES, not a mock: the whole point is that the code reads errno off a
+// genuine filesystem refusal. Skipped where the premise can't hold — root
+// ignores the mode bits, and Windows ACLs don't work like this.
+const canDenyRead = process.platform !== 'win32' && typeof process.getuid === 'function' && process.getuid() !== 0;
+
+test('folderMarkerStatus: blocked when the OS refuses to stat inside the folder', { skip: !canDenyRead }, () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, 'setup.command'), '#!/bin/bash\n');
+  fs.chmodSync(root, 0o000);
+  try {
+    assert.equal(paths.folderMarkerStatus({ platform: 'darwin', env: { TRANSCRIBE_ROOT: root } }), 'blocked');
+  } finally {
+    fs.chmodSync(root, 0o700);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('folderMarkerStatus: a readable marker wins over a blocked sibling (win pair)', { skip: !canDenyRead }, () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, 'setup.ps1'), '# ps1\n');
+  assert.equal(paths.folderMarkerStatus({ platform: 'win32', env: { TRANSCRIBE_ROOT: root } }), 'present');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('folderMarkerPresent stays true only for the present status', { skip: !canDenyRead }, () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, 'setup.command'), '#!/bin/bash\n');
+  fs.chmodSync(root, 0o000);
+  try {
+    assert.equal(paths.folderMarkerPresent({ platform: 'darwin', env: { TRANSCRIBE_ROOT: root } }), false);
+  } finally {
+    fs.chmodSync(root, 0o700);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

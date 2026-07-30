@@ -58,11 +58,20 @@ test('platform default comes from process.platform', () => {
 // C7 extended: every string that named a mac-only thing has a win32 wording.
 // A Windows user must never be told to free space on "your Mac", to keep
 // "Transcribe.app" next to "bin", or to look in the Finder.
+// The relocation dialogs are the one exception, and deliberately so: they exist
+// for two macOS behaviors that have no Windows counterpart (App Translocation
+// and TCC-protected user folders), and main/relocate.js returns null for win32
+// before any of this copy can be reached — asserted by the
+// "Windows and dev builds are never relocated" test in relocate.test.js. Naming
+// Finder in a sentence a Windows user cannot see is correct, not a leak.
+const MAC_ONLY_KEYS = new Set(['relocateBody', 'relocateFailedBody']);
+
 test('no mac-only nouns survive on windows', () => {
   const win = freshCopy('win32');
   const macWords = /\b(Mac|Finder|Transcribe\.app|the Terminal)\b/;
   const offenders = [];
   for (const [key, value] of Object.entries(win)) {
+    if (MAC_ONLY_KEYS.has(key)) continue;
     // Formatters get a placeholder argument so their text is checked too.
     const text = typeof value === 'function' ? String(value('x', 1, 2, 3)) : value;
     if (typeof text === 'string' && macWords.test(text)) offenders.push(`${key}: ${text}`);

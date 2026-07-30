@@ -23,6 +23,9 @@ const menus = require('./main/menus');
 const { registerIpc } = require('./main/ipc');
 const { filterStartupArgs, resolveOpenArg } = require('./main/startup-args');
 const { createInstagram } = require('./main/instagram');
+const paths = require('./main/paths');
+const relocate = require('./main/relocate');
+const { ensureSetupScript } = require('./main/setup-script');
 
 app.setName('Transcribe');
 
@@ -139,7 +142,16 @@ function createMainWindow() {
   });
   hardenWindow(mainWindow);
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  mainWindow.webContents.on('did-finish-load', () => { sendStrings(mainWindow); sendState(); });
+  mainWindow.webContents.on('did-finish-load', () => {
+    sendStrings(mainWindow);
+    sendState();
+    // Once, and only after there is a window for the sheet to hang off — a
+    // modal fired before first paint appears over a grey rectangle.
+    if (!relocationChecked) {
+      relocationChecked = true;
+      setTimeout(maybeOfferRelocationAtStartup, 400);
+    }
+  });
   mainWindow.on('close', (event) => {
     // mac: closing the window leaves the app (and its work) running — the
     // quit guard lives on before-quit. Elsewhere close means quit.
@@ -354,19 +366,24 @@ async function openMacSetup(script) {
 
 function runSetup() {
   let root;
-  try { root = require('./main/paths').folderRoot(); } catch { return; }
+  try { root = paths.folderRoot(); } catch { return; }
   const isWin = process.platform === 'win32';
-  const script = path.join(root, isWin ? 'Transcribe Setup.bat' : 'setup.command');
 
-  // BOTH platforms: if the setup file isn't where folderRoot() looks, say so
-  // ourselves. Handing a missing path to the OS launcher gets the user a raw
-  // shell error ("Windows cannot find '…\Transcribe Setup.bat'", plus a stray
-  // cmd window) or, on macOS, nothing at all — and neither names the folder we
-  // actually searched, which is the one fact needed to fix it. The cause differs
-  // per platform (win: the exe was copied out of its folder; mac: usually App
-  // Translocation, where a quarantined app launched from Downloads runs from a
-  // read-only copy with no sibling files), so the message does too.
-  if (!fs.existsSync(script)) { setupNotFound(script); return; }
+  // Three outcomes, not two. The setup entry point ships inside the bundle as
+  // well as beside it, so a folder that merely LOST it gets it put back here and
+  // setup runs as if nothing happened. What can't be repaired in place is a
+  // folder macOS refuses to let us read (~/Downloads and friends) — for that the
+  // answer is to leave, which offerRelocation does in one click.
+  const found = ensureSetupScript({ root, resourcesPath: process.resourcesPath });
+  if (found.status === 'blocked') {
+    if (!offerRelocation({ trigger: 'setup' })) setupBlocked(root);
+    return;
+  }
+  if (found.status !== 'present' && found.status !== 'restored') {
+    if (!offerRelocation({ trigger: 'setup' })) setupNotFound(found.path);
+    return;
+  }
+  const script = found.path;
 
   if (isWin) {
     try {
@@ -411,6 +428,110 @@ function setupLaunchFailed(script) {
 
 function setupNotFound(script) {
   setupDialog(copy.setupNotFoundTitle, copy.setupNotFoundBody(script), script);
+}
+
+// The file is almost certainly right there and macOS simply won't let us look.
+// Only reached when relocation isn't on offer — otherwise the user gets the
+// button that fixes it instead of an explanation.
+function setupBlocked(root) {
+  setupDialog(copy.setupBlockedTitle, copy.setupBlockedBody(root), root);
+}
+
+// ---------------------------------------------------------------- relocation
+//
+// macOS breaks a release folder kept in ~/Downloads two ways — App Translocation
+// (a read-only randomized copy with no sibling files) and TCC (siblings there,
+// every stat EPERM) — and both surface as "Transcribe can't find setup.command".
+// See main/relocate.js. This is the one-click cure: move the folder somewhere
+// that works, clear the download flag, put setup.command back, restart there.
+// The user never opens Terminal and never types xattr.
+
+let relocationInFlight = false;
+let relocationChecked = false;
+
+async function performRelocation(plan, target) {
+  const bundleName = path.basename(relocate.appBundlePath(process.execPath));
+  let appPath;
+  if (plan.action === 'move-folder') {
+    // A rename on the same volume: instant even with 4.6GB of models in there.
+    relocate.moveFolder(plan.source, target);
+    appPath = path.join(target, bundleName);
+  } else {
+    // Translocated or loose: there is no folder to move, only the bundle.
+    appPath = await relocate.copyAppInto(plan.appPath, target);
+  }
+  // Both halves of what the README used to ask users to do by hand.
+  await relocate.clearQuarantine(target);
+  ensureSetupScript({ root: target, resourcesPath: process.resourcesPath });
+  return appPath;
+}
+
+/// Returns true when a relocation was offered (so the caller shows nothing
+/// else), false when this install has nowhere better to be.
+function offerRelocation({ trigger }) {
+  if (relocationInFlight) return true;
+  let plan = null;
+  try { plan = relocate.planRelocation(); } catch (_) { plan = null; }
+  if (!plan) return false;
+
+  const translocated = plan.reason === 'translocated';
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  // Resolved BEFORE the dialog: a name collision picks "Transcribe 2", and a
+  // dialog that named the colliding path would be promising somewhere the app
+  // is not about to go.
+  const target = relocate.chooseFreeTarget(path.dirname(plan.target), path.basename(plan.target));
+  const opts = {
+    type: 'warning',
+    buttons: [copy.relocateMove, copy.relocateNotNow],
+    defaultId: 0,
+    cancelId: 1,
+    message: translocated ? copy.relocateTranslocatedTitle : copy.relocateTitle(plan.folder),
+    detail: translocated
+      ? copy.relocateTranslocatedBody(target)
+      : copy.relocateBody(plan.folder, target),
+  };
+  const choice = win ? dialog.showMessageBoxSync(win, opts) : dialog.showMessageBoxSync(opts);
+  if (choice !== 0) {
+    // Only a startup nag is dismissible. A user who clicked Run Setup and got
+    // here has an install that is broken right now, and will be asked again.
+    if (trigger === 'startup' && settings) {
+      settings.set('relocateDismissedFor', plan.source || plan.appPath);
+    }
+    return true;
+  }
+
+  relocationInFlight = true;
+  performRelocation(plan, target)
+    .then((appPath) => {
+      spawn('/bin/bash', ['-c', relocate.relaunchScript(process.pid, appPath)],
+        { detached: true, stdio: 'ignore' }).unref();
+      quitApproved = true;
+      app.quit();
+    })
+    .catch((e) => {
+      relocationInFlight = false;
+      const reason = (e && e.message) ? String(e.message) : String(e);
+      dialog.showMessageBoxSync(win || undefined, {
+        type: 'error',
+        buttons: [copy.setupLaunchFailedOK],
+        message: copy.relocateFailedTitle,
+        detail: copy.relocateFailedBody(target, reason),
+      });
+    });
+  return true;
+}
+
+function maybeOfferRelocationAtStartup() {
+  let plan = null;
+  try { plan = relocate.planRelocation(); } catch (_) { return; }
+  if (!plan) return;
+  // Translocation is always broken, and a folder we can't read is broken right
+  // now — offer the cure however many times it takes. A protected folder that
+  // happens to work today is only worth asking about once.
+  const brokenNow = plan.reason === 'translocated' || paths.folderMarkerStatus() !== 'present';
+  const key = plan.source || plan.appPath;
+  if (!brokenNow && settings && settings.get('relocateDismissedFor') === key) return;
+  offerRelocation({ trigger: 'startup' });
 }
 
 function openReleasePage() {

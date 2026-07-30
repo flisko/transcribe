@@ -217,6 +217,27 @@ module.exports = function sl(ctx) {
         ? `Transcribe je »setup.command« iskal ob sebi, a ga tam ni.\n\nTo običajno pomeni, da je bil Transcribe.app odprt neposredno iz datoteke zip ali sam zase. Celotno mapo »Transcribe« premaknite na primer v Applications ali Documents, nato pa v Terminalu enkrat zaženite to na tej mapi:\n\n    xattr -dr com.apple.quarantine /pot/do/Transcribe\n\nZatem znova odprite Transcribe.app iz te mape.\n\nIskano v: ${scriptPath}`
         : `Transcribe je »${setupName}« iskal ob sebi, a ga tam ni.\n\nTranscribe.exe naj ostane v mapi »Transcribe«, ki ste jo razpakirali, ob »${setupName}« in mapi »models«, nato poskusite znova.\n\nIskano v: ${scriptPath}`;
     },
+    setupBlockedTitle: 'Transcribe ne more brati svoje mape',
+    setupBlockedBody(folderPath) {
+      return `macOS Transcribu preprečuje branje mape:\n\n${folderPath}\n\nDatoteke so skoraj zagotovo še vedno tam — to je omejitev zasebnosti za mape Downloads, Desktop in Documents, ne pa manjkajoča datoteka. Če mapo Transcribe premaknete drugam, je težava dokončno odpravljena.`;
+    },
+
+    // Premik iz zaščitene mape (samo macOS). Imena map so tu namenoma
+    // angleška: to so dejanska imena na disku, ki jih uporabnik vidi v poti.
+    relocateTitle(folder) { return `Želite Transcribe premakniti iz mape ${folder}?`; },
+    relocateBody(folder, target) {
+      return `macOS varuje vašo mapo ${folder}, zato Transcribe ne more zanesljivo dostopati do datotek, ki jih hrani ob sebi — modelov, pogona in datoteke ${setupName}. Zato je videti, kot da namestitev manjka, čeprav jo v Finderju vidite.\n\nTranscribe lahko celotno mapo skupaj z modeli premakne v:\n\n${target}\n\nNič se ne prenese znova, vaši prepisi ostanejo na svojem mestu.`;
+    },
+    relocateTranslocatedTitle: 'Transcribe se izvaja iz začasne kopije',
+    relocateTranslocatedBody(target) {
+      return `Ker ste ga odprli neposredno iz prenosa, macOS Transcribe izvaja iz kopije samo za branje, ki ob sebi nima nobene svoje datoteke — zato ne najde ne namestitve ne pogona ne modelov.\n\nTranscribe se lahko pravilno namesti v:\n\n${target}\n\nNato se od tam znova zažene. To traja trenutek in ničesar ne prenese.`;
+    },
+    relocateMove: 'Premakni v Applications',
+    relocateNotNow: 'Ne zdaj',
+    relocateFailedTitle: 'Transcriba ni bilo mogoče premakniti',
+    relocateFailedBody(target, reason) {
+      return `Transcribe se ni mogel premakniti v:\n\n${target}\n\n${reason}\n\nMapo Transcribe premaknite tja sami v Finderju, nato pa Transcribe.app odprite z nove lokacije.`;
+    },
 
     // Instagram
     connectInstagramMenu: 'Poveži Instagram…',
