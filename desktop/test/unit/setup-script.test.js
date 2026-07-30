@@ -58,8 +58,11 @@ test('ensureSetupScript: a missing sibling is restored from the bundle, executab
   assert.equal(got.path, path.join(root, 'setup.command'));
   assert.equal(fs.readFileSync(got.path, 'utf8'), '# bundled setup.command\n');
   // Without the exec bit Terminal refuses to run it — restoring a file that
-  // can't be launched would just move the dead end one step later.
-  assert.equal(fs.statSync(got.path).mode & 0o111, 0o111);
+  // can't be launched would just move the dead end one step later. Asserted
+  // only on a POSIX host: the mac/win matrix is simulated by the `platform`
+  // argument, but mode bits are the real filesystem's, and chmod is a no-op on
+  // the Windows runner.
+  if (process.platform !== 'win32') assert.equal(fs.statSync(got.path).mode & 0o111, 0o111);
   fs.rmSync(root, { recursive: true, force: true });
   fs.rmSync(resources, { recursive: true, force: true });
 });
