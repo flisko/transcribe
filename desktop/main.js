@@ -272,7 +272,12 @@ app.on('will-quit', (event) => {
   if (terminationDone || !queue) return;
   event.preventDefault();
   const cleanup = Promise.resolve(queue.prepareForTermination({ waitMs: 3000 })).catch(() => { });
-  const safety = new Promise((resolve) => { setTimeout(resolve, 5000).unref(); });
+  // NOT unref'd. An unref'd timer does not hold the loop open, and this one has
+  // to fire during a quit that has already been preventDefault'd — precisely
+  // when there may be nothing else keeping the loop busy. Unref'd, the "hard
+  // safety cap" could simply never arrive and the quit would hang forever, which
+  // is the opposite of a safety cap.
+  const safety = new Promise((resolve) => { setTimeout(resolve, 5000); });
   Promise.race([cleanup, safety]).finally(() => {
     terminationDone = true;
     app.quit();
@@ -507,6 +512,15 @@ function offerRelocation({ trigger }) {
         { detached: true, stdio: 'ignore' }).unref();
       quitApproved = true;
       app.quit();
+      // BACKSTOP, and not a theoretical one: observed in the v1.0.23 flow test.
+      // The helper waits on THIS pid before it opens the new copy, so a quit
+      // that gets held up leaves the user staring at an apparently unchanged
+      // window while the move silently never finishes — the same "the button did
+      // nothing" failure this whole change exists to remove. will-quit holds the
+      // quit for async cleanup; if anything in there stalls, leave anyway.
+      // Safe here specifically because relocation is offered at startup, with no
+      // transcription running and nothing to clean up.
+      setTimeout(() => app.exit(0), 4000);
     })
     .catch((e) => {
       relocationInFlight = false;
