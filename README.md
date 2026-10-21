@@ -240,7 +240,7 @@ To set it up on **another machine**:
 
 ## Building the app yourself
 
-Only needed if you change the source in `desktop/`. Requires **Node 22**:
+Only needed if you change the source in `desktop/`. Requires **Node 24** (24.22.1 or newer):
 
 ```bash
 cd desktop
